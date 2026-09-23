@@ -14,7 +14,7 @@ if (-not $makeappx) { throw "Windows SDK makeappx.exe not found" }
 $layout = Join-Path $Out "msix-layout"
 Remove-Item $layout -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force "$layout\Assets" | Out-Null
-Copy-Item $Exe "$layout\MDW.exe"
+Copy-Item $Exe "$layout\MoveDigitalWeight.exe"
 foreach ($a in "StoreLogo", "Square44x44Logo", "Square150x150Logo", "Square310x310Logo") {
   Copy-Item (Join-Path $Icons "$a.png") "$layout\Assets\$a.png"
 }
