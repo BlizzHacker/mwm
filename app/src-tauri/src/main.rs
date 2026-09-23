@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use mdw_core::{apps, cleaner, disk, drivers, dupes, procs, shred, startup, sys, updater};
+use mdw_core::{apps, cleaner, disk, drivers, dupes, files, jobs, procs, shred, startup, sys, toolkit, updater};
 use serde::Serialize;
 
 type Res<T> = Result<T, String>;
@@ -140,6 +140,154 @@ fn relaunch_admin(app: tauri::AppHandle) -> Res<()> {
     Ok(())
 }
 
+// ------------------------------------------------------------ Commander ----
+
+fn e<T>(r: anyhow::Result<T>) -> Res<T> {
+    r.map_err(|x| x.to_string())
+}
+
+#[tauri::command]
+async fn files_roots() -> Res<Vec<files::Root>> {
+    bg(files::roots).await
+}
+
+#[tauri::command]
+async fn files_list(dir: String) -> Res<files::Listing> {
+    e(bg(move || files::list(&dir)).await?)
+}
+
+#[tauri::command]
+fn files_mkdir(parent: String, name: String) -> Res<String> {
+    e(files::mkdir(&parent, &name))
+}
+
+#[tauri::command]
+fn files_rename(path: String, name: String) -> Res<String> {
+    e(files::rename(&path, &name))
+}
+
+#[tauri::command]
+fn files_conflicts(sources: Vec<String>, dest: String) -> Vec<String> {
+    files::conflicts(&sources, &dest)
+}
+
+#[tauri::command]
+fn files_transfer(sources: Vec<String>, dest: String, mode: String, is_move: bool) -> u64 {
+    files::transfer(sources, dest, mode, is_move)
+}
+
+#[tauri::command]
+fn files_delete(paths: Vec<String>, permanent: bool) -> u64 {
+    files::delete(paths, permanent)
+}
+
+#[tauri::command]
+fn files_pack(sources: Vec<String>, archive: String) -> u64 {
+    files::pack(sources, archive)
+}
+
+#[tauri::command]
+fn files_unpack(archive: String, dest: String) -> u64 {
+    files::unpack(archive, dest)
+}
+
+#[tauri::command]
+fn files_search(root: String, pattern: String, text: String) -> u64 {
+    files::search(root, pattern, text)
+}
+
+#[tauri::command]
+async fn files_preview(path: String) -> Res<files::Preview> {
+    e(bg(move || files::preview(&path)).await?)
+}
+
+#[tauri::command]
+async fn files_props(path: String) -> Res<files::Props> {
+    e(bg(move || files::properties(&path)).await?)
+}
+
+#[tauri::command]
+async fn files_dir_sizes(paths: Vec<String>) -> Res<Vec<(String, u64)>> {
+    bg(move || files::dir_sizes(&paths)).await
+}
+
+#[tauri::command]
+fn files_multi_rename(plan: Vec<(String, String)>) -> Res<usize> {
+    e(files::multi_rename(&plan))
+}
+
+#[tauri::command]
+fn files_write(path: String, text: String) -> Res<()> {
+    e(files::write_text(&path, &text))
+}
+
+#[tauri::command]
+fn open_default(path: String) -> Res<()> {
+    e(sys::open_default(&path))
+}
+
+#[tauri::command]
+fn edit_file(path: String) -> Res<()> {
+    e(sys::edit(&path))
+}
+
+#[tauri::command]
+fn terminal(dir: String) -> Res<()> {
+    e(sys::terminal(&dir))
+}
+
+#[tauri::command]
+fn jobs_list() -> Vec<jobs::JobInfo> {
+    jobs::list()
+}
+
+#[tauri::command]
+fn job_cancel(id: u64) {
+    jobs::cancel(id)
+}
+
+#[tauri::command]
+fn jobs_clear() {
+    jobs::clear_finished()
+}
+
+// -------------------------------------------------------------- Toolkit ----
+
+#[tauri::command]
+fn toolkit_tasks() -> Vec<toolkit::Task> {
+    toolkit::TASKS.to_vec()
+}
+
+#[tauri::command]
+fn toolkit_run(id: String) -> Res<u64> {
+    e(toolkit::run_task(&id))
+}
+
+#[tauri::command]
+async fn toolkit_report() -> Res<serde_json::Value> {
+    bg(toolkit::report).await
+}
+
+#[tauri::command]
+async fn toolkit_security() -> Res<serde_json::Value> {
+    bg(toolkit::security).await
+}
+
+#[tauri::command]
+async fn toolkit_events() -> Res<serde_json::Value> {
+    bg(toolkit::events).await
+}
+
+#[tauri::command]
+async fn toolkit_network() -> Res<serde_json::Value> {
+    bg(toolkit::network).await
+}
+
+#[tauri::command]
+async fn toolkit_wifi() -> Res<serde_json::Value> {
+    bg(toolkit::wifi).await
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -166,7 +314,35 @@ fn main() {
             procs_kill,
             reveal,
             launch_tool,
-            relaunch_admin
+            relaunch_admin,
+            files_roots,
+            files_list,
+            files_mkdir,
+            files_rename,
+            files_conflicts,
+            files_transfer,
+            files_delete,
+            files_pack,
+            files_unpack,
+            files_search,
+            files_preview,
+            files_props,
+            files_dir_sizes,
+            files_multi_rename,
+            files_write,
+            open_default,
+            edit_file,
+            terminal,
+            jobs_list,
+            job_cancel,
+            jobs_clear,
+            toolkit_tasks,
+            toolkit_run,
+            toolkit_report,
+            toolkit_security,
+            toolkit_events,
+            toolkit_network,
+            toolkit_wifi
         ])
         .run(tauri::generate_context!())
         .expect("MDW failed to start");

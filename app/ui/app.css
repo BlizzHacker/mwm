@@ -207,3 +207,50 @@ select.search { min-width: 0; }
 .nav-spin { margin-left: auto; }
 #activity { padding: 8px 4px; display: flex; flex-direction: column; gap: 6px; }
 .act { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--accent); background: #12241b; border: 1px solid #1f4d33; border-radius: 8px; padding: 7px 10px; cursor: pointer; }
+.act { position: relative; overflow: hidden; }
+.act-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-x { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 2px; font-size: 11px; }
+.act-x:hover { color: var(--danger); }
+.act-bar { position: absolute; left: 0; bottom: 0; height: 2px; background: var(--accent); }
+
+/* ---------- Commander ---------- */
+.cmd { display: flex; flex-direction: column; height: calc(100vh - 128px); gap: 10px; }
+.cmd-drives { display: flex; gap: 6px; flex-wrap: wrap; }
+.drive { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px 6px; cursor: pointer; font-size: 12.5px; display: flex; flex-direction: column; gap: 4px; min-width: 58px; }
+.drive:hover { border-color: var(--accent-2); }
+.drive-bar { display: block; height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.drive-bar b { display: block; height: 100%; background: var(--accent-2); }
+.drive-bar.full b { background: var(--danger); }
+.panes { flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; min-height: 0; }
+.pane { display: flex; flex-direction: column; min-height: 0; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.pane.active { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(94, 224, 143, 0.25); }
+.pane-head { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--line); }
+.pathbox { flex: 1; background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 5px 9px; outline: none; color: var(--text); }
+.pathbox:focus { border-color: var(--accent-2); }
+.pane-list { flex: 1; overflow: auto; outline: none; }
+.pane-foot { display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.ftable td { padding: 4px 8px; border-bottom: 0; white-space: nowrap; cursor: default; }
+.ftable th { padding: 6px 8px; }
+.ftable .fname { overflow: hidden; text-overflow: ellipsis; max-width: 0; width: 100%; }
+.ftable .glyph { display: inline-block; width: 20px; }
+.ftable tr.dir .fname { font-weight: 600; }
+.ftable tr.hid { opacity: 0.55; }
+.ftable tr.picked td { color: var(--warn); }
+.ftable tr.cur td { background: #1f2c45; }
+.pane.active .ftable tr.cur td { background: #24406a; }
+.fkeys { display: flex; gap: 4px; flex-wrap: wrap; }
+.fk { flex: 1; min-width: 90px; background: var(--card); border: 1px solid var(--line); border-radius: 7px; padding: 6px 8px; cursor: pointer; font-size: 12.5px; color: var(--text); display: flex; gap: 6px; align-items: center; justify-content: center; }
+.fk:hover { border-color: var(--accent); }
+.fk kbd { font: 11px var(--mono); color: var(--accent); }
+.modal-card.wide { width: min(1100px, 94vw); }
+.viewer { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px; max-height: 64vh; overflow: auto; white-space: pre-wrap; word-break: break-word; user-select: text; margin-top: 10px; }
+.viewer-img { text-align: center; margin-top: 10px; background: repeating-conic-gradient(#1b2232 0% 25%, #151b28 0% 50%) 50% / 20px 20px; border-radius: 8px; padding: 10px; }
+.viewer-img img { max-width: 100%; max-height: 64vh; }
+.hit { padding: 3px 6px; cursor: pointer; border-radius: 5px; word-break: break-all; }
+.hit:hover { background: var(--card-2); color: var(--accent); }
+
+/* ---------- Toolkit ---------- */
+.kv td { padding: 6px 4px; }
+.kv td:first-child { width: 42%; }
+.console { background: #070a10; color: #b9f5cf; border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 260px; overflow: auto; white-space: pre-wrap; margin-top: 10px; font-size: 12px; user-select: text; }
+.task .pill .spin { vertical-align: -2px; margin-right: 4px; }

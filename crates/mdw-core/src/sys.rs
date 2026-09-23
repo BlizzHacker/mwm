@@ -141,6 +141,57 @@ pub fn reveal(path: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Open a file/folder with its default app (non-blocking).
+pub fn open_default(path: &str) -> anyhow::Result<()> {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::Shell::ShellExecuteW;
+        let w = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+        let (verb, file) = (w("open"), w(path));
+        let r = unsafe { ShellExecuteW(std::ptr::null_mut(), verb.as_ptr(), file.as_ptr(), std::ptr::null(), std::ptr::null(), 1) };
+        if (r as isize) <= 32 {
+            anyhow::bail!("no app is associated with this file");
+        }
+    }
+    #[cfg(target_os = "macos")]
+    crate::util::cmd("open").arg(path).spawn()?;
+    #[cfg(all(unix, not(target_os = "macos")))]
+    crate::util::cmd("xdg-open").arg(path).spawn()?;
+    Ok(())
+}
+
+/// Open a plain-text editor on a file (Commander F4).
+pub fn edit(path: &str) -> anyhow::Result<()> {
+    #[cfg(windows)]
+    std::process::Command::new("notepad.exe").arg(path).spawn()?;
+    #[cfg(not(windows))]
+    open_default(path)?;
+    Ok(())
+}
+
+/// A terminal window in `dir`.
+pub fn terminal(dir: &str) -> anyhow::Result<()> {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::UI::Shell::ShellExecuteW;
+        let w = |s: &str| s.encode_utf16().chain(std::iter::once(0)).collect::<Vec<u16>>();
+        let (verb, d) = (w("open"), w(dir));
+        // Windows Terminal if present, else a classic console.
+        let wt = w("wt.exe");
+        let args = w(&format!("-d \"{dir}\""));
+        let r = unsafe { ShellExecuteW(std::ptr::null_mut(), verb.as_ptr(), wt.as_ptr(), args.as_ptr(), d.as_ptr(), 1) };
+        if (r as isize) <= 32 {
+            let cmd = w("cmd.exe");
+            unsafe { ShellExecuteW(std::ptr::null_mut(), verb.as_ptr(), cmd.as_ptr(), std::ptr::null(), d.as_ptr(), 1) };
+        }
+    }
+    #[cfg(target_os = "macos")]
+    crate::util::cmd("open").args(["-a", "Terminal", dir]).spawn()?;
+    #[cfg(all(unix, not(target_os = "macos")))]
+    crate::util::cmd("x-terminal-emulator").current_dir(dir).spawn()?;
+    Ok(())
+}
+
 /// Built-in OS tools (Revo's "Windows Tools" panel).
 pub fn launch_tool(tool: &str) -> anyhow::Result<()> {
     #[cfg(windows)]

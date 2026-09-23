@@ -153,6 +153,138 @@
     shred_paths: async () => ({ files: 0, bytes: 0, failed: [] }),
     wipe_free: async () => "Demo: no disk was touched.",
   };
+
+  // ---------- demo filesystem + jobs (Commander / Toolkit) ----------
+  const now = Math.floor(Date.now() / 1000);
+  const FS = {
+    "C:\\": [["Users"], ["Windows"], ["Program Files"], ["pagefile.sys", 28.6 * GB, true], ["hiberfil.sys", 3.2 * GB, true]],
+    "C:\\Users": [["you"], ["Public"]],
+    "C:\\Users\\you": [["Desktop"], ["Documents"], ["Downloads"], ["Pictures"], [".gitconfig", 420, true], ["NTUSER.DAT", 3 * MB, true]],
+    "C:\\Users\\you\\Downloads": [["setup-7zip-26.03.exe", 1.6 * MB], ["ubuntu-24.04.iso", 5.7 * GB], ["invoice-2026-09.pdf", 210 * 1024], ["notes.txt", 2048], ["photos-backup.zip", 812 * MB], ["old-installers"]],
+    "C:\\Users\\you\\Downloads\\old-installers": [["vlc-3.0.20.exe", 42 * MB], ["discord-setup.exe", 98 * MB]],
+    "C:\\Users\\you\\Documents": [["Taxes 2025"], ["Resume.docx", 48 * 1024], ["budget.xlsx", 96 * 1024], ["readme.md", 1300]],
+    "C:\\Users\\you\\Documents\\Taxes 2025": [["W2.pdf", 180 * 1024], ["1099.pdf", 90 * 1024]],
+    "C:\\Users\\you\\Desktop": [["MDW.lnk", 1400], ["todo.txt", 512]],
+    "C:\\Users\\you\\Pictures": [["IMG_2041.jpg", 4.2 * MB], ["IMG_2042.jpg", 3.9 * MB], ["screenshot.png", 900 * 1024]],
+    "C:\\Windows": [["System32"], ["Temp"], ["explorer.exe", 5 * MB]],
+    "C:\\Program Files": [["7-Zip"], ["KeePassXC"], ["VideoLAN"]],
+    "T:\\": [["MDW"], ["Movies"], ["Backups"]],
+    "T:\\MDW": [["0.1.2"], ["README.txt", 900]],
+  };
+  const kids = (p) => FS[p] || (FS[p] = []);
+  const par = (p) => { const t = p.replace(/\\$/, ""); const i = t.lastIndexOf("\\"); return i < 0 ? null : i === 2 ? t.slice(0, 3) : t.slice(0, i); };
+  const jp = (d, n) => (d.endsWith("\\") ? d + n : d + "\\" + n);
+  const nm = (p) => p.replace(/\\$/, "").split("\\").pop();
+  const find = (p) => { const d = par(p); return d ? kids(d).find((e) => e[0] === nm(p)) : null; };
+  const djobs = [];
+  let jid = 1;
+  const fakeJob = (kind, title, page, ms, finish, lines = []) => {
+    const j = { id: jid++, kind, title, page, done_bytes: 0, total_bytes: 100, done_items: 0, total_items: 0, current: "", state: "running", message: "", output: [], started: now, finished: 0 };
+    djobs.push(j);
+    const t0 = Date.now();
+    const iv = setInterval(() => {
+      const f = Math.min(1, (Date.now() - t0) / ms);
+      j.done_bytes = Math.round(f * 100);
+      if (lines.length) { const k = Math.floor(f * lines.length); while (j.output.length < k) j.output.push(lines[j.output.length]); j.current = lines[Math.max(0, k - 1)] || ""; }
+      if (j.cancel) { clearInterval(iv); j.state = "cancelled"; j.message = "cancelled"; }
+      else if (f >= 1) { clearInterval(iv); try { j.message = finish(j) || "Done"; j.state = "done"; } catch (e) { j.state = "failed"; j.message = String(e); } }
+    }, 150);
+    return j.id;
+  };
+  const demoSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300"><rect width="480" height="300" fill="#35c9e6"/><circle cx="360" cy="80" r="40" fill="#ffffff55"/><path d="M0 300 160 140 260 240 340 170 480 300z" fill="#5ee08f"/></svg>';
+  Object.assign(handlers, {
+    files_roots: () => [
+      { path: "C:\\", label: "Acer", kind: "fixed", total: 475.4 * GB, free: 3.5 * GB },
+      { path: "T:\\", label: "usb4", kind: "network", total: 11 * 1024 * GB, free: 1.7 * 1024 * GB },
+      { path: "C:\\Users\\you", label: "Home", kind: "place", total: 0, free: 0 },
+      { path: "C:\\Users\\you\\Downloads", label: "Downloads", kind: "place", total: 0, free: 0 },
+    ],
+    files_list: ({ dir }) => {
+      const d = dir.length === 2 ? dir + "\\" : dir;
+      if (!FS[d] && !find(d)) throw `cannot open ${dir}`;
+      return { path: d, parent: par(d), free: d.startsWith("T") ? 1.7 * 1024 * GB : 3.5 * GB,
+        entries: kids(d).map(([name, size, hidden], i) => ({ name, path: jp(d, name), is_dir: size === undefined, size: size || 0, modified: now - i * 86400 * 3 - 3600, hidden: !!hidden, readonly: false, link: false, ext: size === undefined || !name.includes(".") ? "" : name.split(".").pop().toLowerCase() })) };
+    },
+    files_mkdir: ({ parent, name }) => { kids(parent).push([name]); FS[jp(parent, name)] = []; return jp(parent, name); },
+    files_rename: ({ path, name }) => { const e = find(path); if (e) e[0] = name; return name; },
+    files_conflicts: ({ sources, dest }) => sources.map(nm).filter((n) => kids(dest).some((e) => e[0] === n)),
+    files_transfer: ({ sources, dest, isMove }) => fakeJob(isMove ? "move" : "copy", `${isMove ? "Move" : "Copy"} ${sources.length} item(s) to ${dest}`, "files", 2500, () => {
+      for (const s of sources) {
+        const e = find(s);
+        if (!e) continue;
+        if (!kids(dest).some((x) => x[0] === e[0])) kids(dest).push([...e]);
+        if (isMove) FS[par(s)] = kids(par(s)).filter((x) => x !== e);
+      }
+      return `${isMove ? "Moved" : "Copied"} ${sources.length} items`;
+    }),
+    files_delete: ({ paths }) => fakeJob("delete", `Recycle ${paths.length} item(s)`, "files", 700, () => { for (const p of paths) FS[par(p)] = kids(par(p)).filter((x) => x[0] !== nm(p)); return `Recycled ${paths.length} items`; }),
+    files_pack: ({ archive }) => fakeJob("pack", `Pack ${archive}`, "files", 1500, () => { kids(par(archive)).push([nm(archive), 12 * MB]); return `Created ${archive}`; }),
+    files_unpack: ({ dest }) => fakeJob("unpack", `Unpack to ${dest}`, "files", 1500, () => { kids(par(dest)).push([nm(dest)]); FS[dest] = [["photo1.jpg", 3 * MB], ["photo2.jpg", 3 * MB]]; return `Extracted to ${dest}`; }),
+    files_search: ({ root, pattern }) => {
+      const hits = [];
+      const q = (pattern || "").replace(/\*/g, "").toLowerCase();
+      for (const [d, list] of Object.entries(FS)) if (d.startsWith(root)) for (const [n] of list) if (n.toLowerCase().includes(q)) hits.push(jp(d, n));
+      return fakeJob("search", `Search "${pattern}"`, "files", 1200, () => `${hits.length} found`, hits);
+    },
+    files_preview: ({ path }) => {
+      const e = find(path) || [];
+      const x = nm(path).split(".").pop();
+      if (["jpg", "png"].includes(x)) return { kind: "image", size: e[1] || 0, truncated: false, content: "data:image/svg+xml;base64," + btoa(demoSvg) };
+      if (["exe", "iso", "zip", "pdf", "docx", "xlsx", "sys"].includes(x)) return { kind: "binary", size: e[1] || 0, truncated: true, content: "00000000  4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00  MZ..............\n00000010  b8 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00  ........@......." };
+      return { kind: "text", size: e[1] || 0, truncated: false, content: `# ${nm(path)}\n\nThis is the MDW web demo - in the desktop app F3 shows the real file.\nText, images and a hex view for binaries.` };
+    },
+    files_props: ({ path }) => { const e = find(path) || [nm(path)]; return { path, is_dir: e[1] === undefined, size: e[1] || 64 * MB, files: 12, dirs: 2, created: now - 86400 * 90, modified: now - 86400 * 3, accessed: now - 600, readonly: false, hidden: !!e[2] }; },
+    files_dir_sizes: async ({ paths }) => { await wait(600); return paths.map((p, i) => [p, (i + 1) * 137 * MB]); },
+    files_multi_rename: ({ plan }) => { plan.forEach(([p, n]) => { const e = find(p); if (e) e[0] = n; }); return plan.length; },
+    files_write: () => null,
+    open_default: () => null,
+    edit_file: () => null,
+    terminal: () => { throw "Terminal opens in the desktop app."; },
+    jobs_list: () => djobs.map((j) => ({ ...j, output: j.output.slice() })),
+    job_cancel: ({ id }) => { const j = djobs.find((x) => x.id === id); if (j) j.cancel = true; },
+    jobs_clear: () => { for (let i = djobs.length - 1; i >= 0; i--) if (djobs[i].state !== "running") djobs.splice(i, 1); },
+    toolkit_tasks: () => [
+      ["sfc", "Windows repair", "System File Checker", "Finds and repairs corrupted Windows system files (sfc /scannow).", true, "10-30"],
+      ["dism", "Windows repair", "Repair Windows image", "DISM RestoreHealth - repairs the component store that SFC repairs from.", true, "15-40"],
+      ["dismclean", "Windows repair", "Clean up component store", "Removes superseded update files from WinSxS. Often frees several GB.", true, "5-20"],
+      ["chkdsk", "Windows repair", "Check disk (online)", "Scans C: for file-system errors without rebooting.", true, "2-15"],
+      ["restore", "Windows repair", "Create restore point", "Snapshot of system settings and drivers.", true, "1-3"],
+      ["dns", "Network", "Flush DNS cache", "Fixes sites that won't load after DNS changes.", false, "<1"],
+      ["netreset", "Network", "Reset network stack", "Resets Winsock and TCP/IP to defaults.", true, "<1"],
+      ["spooler", "Printing", "Fix stuck printing", "Clears the print queue and restarts the Print Spooler.", true, "<1"],
+      ["defquick", "Security", "Defender quick scan", "Scans the places malware usually hides.", false, "2-10"],
+      ["battery", "Hardware", "Battery health report", "Design vs. full-charge capacity and usage history.", false, "<1"],
+    ].map(([id, group, name, description, admin, minutes]) => ({ id, group, name, description, command: "", admin, minutes, warning: "" })),
+    toolkit_run: ({ id }) => fakeJob("repair", { sfc: "System File Checker", dism: "Repair Windows image", defquick: "Defender quick scan" }[id] || id, "repair", 6000, () => "finished",
+      id === "sfc" ? ["Beginning system scan.  This process will take some time.", "Beginning verification phase of system scan.", "Verification 25% complete.", "Verification 61% complete.", "Verification 100% complete.", "Windows Resource Protection did not find any integrity violations."]
+        : ["Starting...", "Working...", "Completed successfully."]),
+    toolkit_report: async () => {
+      await wait(900);
+      return { Manufacturer: "Acer", Model: "Nitro V 15", SystemType: "x64-based PC", Serial: "NHQNDAA00DEMO", Board: "Acer Tanzanite_RTH", BiosVendor: "Insyde Corp.", BiosVersion: "V1.12", BiosDate: "2025-06-11", Cpu: "13th Gen Intel(R) Core(TM) i5-13420H", Cores: 8, Threads: 12, MaxMHz: 2100, RamBytes: 16 * GB, Os: "Microsoft Windows 11 Home", OsVersion: "10.0.26200", Build: "26200", InstallDate: "2025-08-02", LastBoot: "2026-09-20 08:14", Activation: "Activated", LicenseName: "Windows(R) Operating System, OEM_DM channel", PartialKey: "3V66T", OemKey: "DEMO1-XXXXX-XXXXX-XXXXX-3V66T",
+        Gpus: [{ Name: "NVIDIA GeForce RTX 5050 Laptop GPU", Driver: "32.0.15.8157" }, { Name: "Intel(R) UHD Graphics", Driver: "32.0.101.7082" }],
+        Memory: [{ Slot: "DIMM A", Size: 8 * GB, Speed: 5200, Maker: "Micron", Part: "MTC4C10163S1SC48BA1" }, { Slot: "DIMM B", Size: 8 * GB, Speed: 5200, Maker: "Micron", Part: "MTC4C10163S1SC48BA1" }],
+        Disks: [{ Name: "WD PC SN5000S 512GB", Media: "SSD", Bus: "NVMe", Size: 512 * 1000 ** 3, Health: "Healthy", Status: "OK", Temp: 41, Wear: 3, PowerOnHours: 2890, ReadErrors: 0, WriteErrors: 0 }],
+        Battery: [{ Name: "AP23A8L", Charge: 87, Status: 2 }] };
+    },
+    toolkit_security: async () => {
+      await wait(700);
+      return { Available: true, RealTime: true, Antivirus: true, Tamper: true, SigVersion: "1.435.212.0", SigUpdated: "2026-09-23 06:02", QuickScanAge: 0, FullScanAge: 12, UAC: 1,
+        Firewall: [{ Name: "Domain", Enabled: true }, { Name: "Private", Enabled: true }, { Name: "Public", Enabled: true }],
+        Threats: [{ When: "2026-07-14 21:03", ThreatID: 2147725, Name: "PUA:Win32/Bundlore", Resources: "file:_C:\\Users\\you\\Downloads\\free-converter-setup.exe", Cleaned: true }], BitLocker: [{ Drive: "C:", Protection: 1 }] };
+    },
+    toolkit_events: async () => {
+      await wait(800);
+      return { Crashes: [{ Time: "2026-09-13 02:41", Id: 41, Source: "Microsoft-Windows-Kernel-Power", Message: "The system has rebooted without cleanly shutting down first." }], Dumps: [],
+        Errors: [["2026-09-23 09:12", 7031, "Service Control Manager", "The EABackgroundService service terminated unexpectedly."], ["2026-09-22 22:40", 10016, "DistributedCOM", "The application-specific permission settings do not grant Local Activation permission."], ["2026-09-22 18:03", 1000, "Application Error", "Faulting application name: Discord.exe"], ["2026-09-21 07:55", 10010, "DistributedCOM", "The server did not register with DCOM within the required timeout."]]
+          .map(([Time, Id, Source, Message]) => ({ Time, Id, Source, Message, Level: "Error", Log: "System" })) };
+    },
+    toolkit_network: async () => {
+      await wait(1200);
+      return { Adapters: [{ Name: "Wi-Fi", Desc: "MediaTek Wi-Fi 6 MT7920", IPv4: "192.168.0.42", Gateway: "192.168.0.1", DNS: "192.168.0.85, 1.1.1.1", Speed: "573.5 Mbps", Mac: "AC-12-03-DE-00-00" }],
+        Tests: [{ Name: "Router / gateway", Target: "192.168.0.1", Ok: true, Detail: "3ms" }, { Name: "Internet (ping)", Target: "1.1.1.1", Ok: true, Detail: "19ms" }, { Name: "DNS lookup", Target: "www.microsoft.com", Ok: true, Detail: "23.45.1.9" }, { Name: "HTTPS port", Target: "1.1.1.1:443", Ok: true, Detail: "open" }] };
+    },
+    toolkit_wifi: async () => { await wait(500); return [{ Name: "HomeNet-5G", Auth: "WPA3-Personal", Key: "demo-password-123" }, { Name: "CoffeeShop", Auth: "Open", Key: "" }]; },
+  });
   window.MDW_DEMO = async (cmd, args) => {
     const h = handlers[cmd];
     if (!h) throw `demo: ${cmd} not available`;

@@ -9,11 +9,14 @@ pub mod cleaner;
 pub mod disk;
 pub mod drivers;
 pub mod dupes;
+pub mod files;
+pub mod jobs;
 pub mod fsutil;
 pub mod procs;
 pub mod shred;
 pub mod startup;
 pub mod sys;
+pub mod toolkit;
 pub mod updater;
 pub mod util;
 

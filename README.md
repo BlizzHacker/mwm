@@ -19,6 +19,8 @@ for servers.
 | Revo Evidence Remover | Free-space wipe (`cipher /w` on Windows) |
 | Revo Windows Tools | System Tools launcher (Disk Cleanup, Restore, Services, ...) |
 | - | Disk Analyzer (largest folders/files, by type) |
+| **Double Commander / FMOD** | **Commander** - dual-pane, keyboard-first file manager: F3 view (text/image/hex), F4 edit, F5 copy, F6 move, F7 mkdir, F8 recycle, Shift+Del delete, F2 rename, Alt+F7 search (name + content), compare panes, multi-rename ([N] [E] [C] [D] tokens, find/replace, case), zip pack/unpack, folder sizes, properties, terminal here, type-ahead, drive bar incl. network drives. Copies/moves are background jobs with progress, cancel and conflict handling (skip / keep both / overwrite) |
+| **Geek Squad MRI / Hiren's** | **Tech Toolkit** - System Report (hardware, BIOS, serial, RAM sticks, GPUs, Windows activation, product key + OEM key from BIOS, disk health/temp/wear, battery; export to HTML), Repair (SFC, DISM RestoreHealth + component cleanup, chkdsk, Windows Update reset, restore point, clock resync, icon cache, DNS flush, IP renew, Winsock/TCP reset, print spooler, Defender update/quick/full scan, battery + energy reports, memory test), Security (Defender, firewall, UAC, BitLocker, threat history, saved Wi-Fi keys), Network diagnostics (router → internet → DNS → HTTPS with a plain-English verdict), Crashes & Events (BSODs, hard resets, minidumps, error log) |
 
 ## Layout
 
@@ -70,6 +72,10 @@ Store package (Windows, needs the Windows SDK): `packaging/msix/build-msix.ps1`.
    large/duplicate files via storage access, uninstall via system intents. No root tricks.
 4. **iOS / iPadOS** - Apple does not let any app clean other apps. MDW for iOS can do duplicate/large photo
    & file cleanup in the user's own library and storage insight - that is the honest ceiling.
+4b. **MDW Rescue (bootable)** - the Hiren's / MRI "boot it when Windows won't" piece: a SystemRescue-based
+   ISO/USB with the static `mdw` CLI + Commander web UI, offline file recovery, partition tools, offline
+   Windows repair (SFC /offbootdir, DISM /image) and malware scanning. Password *reset* for local accounts only
+   with the owner present - no key/password cracking tools.
 5. **macOS** - engine rules already exist (`~/Library/Caches`, logs, Trash, Xcode DerivedData, app bundle
    + leftover removal, brew updates); needs a signed/notarized build.
 

@@ -27,7 +27,34 @@ function toast(msg, err = false) {
 }
 const loading = (msg) => `<div class="loading"><span class="spin lg"></span><div>${esc(msg)}</div></div>`;
 function modal(html) { $("#modal-card").innerHTML = html; $("#modal").classList.remove("hidden"); }
-function closeModal() { $("#modal").classList.add("hidden"); }
+function closeModal() { $("#modal").classList.add("hidden"); document.dispatchEvent(new CustomEvent("mdw-modal-closed")); }
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && modalOpen()) closeModal(); });
+const modalOpen = () => !$("#modal").classList.contains("hidden");
+/** Small promise-based prompt: resolves to the entered string or null. */
+function ask(title, label, value = "", okText = "OK", note = "") {
+  return new Promise((resolve) => {
+    modal(`<h2>${esc(title)}</h2>${note ? `<p class="muted">${note}</p>` : ""}<label class="muted" style="font-size:12px">${esc(label)}</label>
+      <input class="search" id="ask-v" style="width:100%;margin-top:6px" value="${esc(value)}">
+      <div class="row" style="justify-content:flex-end;margin-top:18px"><button class="btn" id="ask-no">Cancel</button><button class="btn primary" id="ask-ok">${esc(okText)}</button></div>`);
+    const inp = $("#ask-v");
+    inp.focus();
+    const dot = value.lastIndexOf(".");
+    inp.setSelectionRange(0, dot > 0 ? dot : value.length);
+    const done = (v) => { closeModal(); resolve(v); };
+    $("#ask-ok").onclick = () => done(inp.value);
+    $("#ask-no").onclick = () => done(null);
+    inp.onkeydown = (e) => { if (e.key === "Enter") done(inp.value); if (e.key === "Escape") done(null); };
+  });
+}
+/** Promise-based choice dialog: resolves to the chosen key or null. */
+function choose(title, html, buttons) {
+  return new Promise((resolve) => {
+    modal(`<h2>${title}</h2>${html}<div class="row" style="justify-content:flex-end;margin-top:18px;flex-wrap:wrap"><button class="btn" data-ch="">Cancel</button>${buttons.map(([k, t, cls]) => `<button class="btn ${cls || ""}" data-ch="${k}">${esc(t)}</button>`).join("")}</div>`);
+    $$("[data-ch]").forEach((b) => (b.onclick = () => { closeModal(); resolve(b.dataset.ch || null); }));
+    const primary = $$("[data-ch]").pop();
+    primary && primary.focus();
+  });
+}
 async function guard(fn) {
   try { return await fn(); } catch (e) { toast(String(e?.message || e), true); console.error(e); }
 }
@@ -50,6 +77,10 @@ const I = {
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   play: '<path d="M7 4l13 8-13 8z"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+  report: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/>',
+  wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-.5-.5-2.5z"/>',
+  net: '<path d="M2 9a15 15 0 0 1 20 0"/><path d="M5.5 12.5a10 10 0 0 1 13 0"/><path d="M9 16a5 5 0 0 1 6 0"/><circle cx="12" cy="19.5" r="1"/>',
+  alert: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/>',
   weight: '<path d="M6 9h12l2 11H4z"/><circle cx="12" cy="6" r="3"/>',
 };
 const icon = (k) => `<svg viewBox="0 0 24 24">${I[k] || ""}</svg>`;
@@ -72,12 +103,20 @@ const PAGES = [
   { id: "cleaner", label: "Custom Clean", icon: "clean" },
   { id: "dupes", label: "Duplicate Finder", icon: "dupes" },
   { id: "disk", label: "Disk Analyzer", icon: "disk" },
+  { sec: "Files" },
+  { id: "files", label: "Commander", icon: "folder" },
   { sec: "Programs" },
   { id: "uninstaller", label: "Uninstaller", icon: "uninstall" },
   { id: "startup", label: "Startup Manager", icon: "startup" },
   { id: "updates", label: "Software Updater", icon: "updates" },
   { id: "perf", label: "Performance", icon: "perf" },
   { id: "drivers", label: "Drivers", icon: "drivers" },
+  { sec: "Tech Toolkit" },
+  { id: "report", label: "System Report", icon: "report" },
+  { id: "repair", label: "Repair", icon: "wrench" },
+  { id: "security", label: "Security", icon: "shield" },
+  { id: "network", label: "Network", icon: "net" },
+  { id: "events", label: "Crashes & Events", icon: "alert" },
   { sec: "Privacy & tools" },
   { id: "privacy", label: "Shredder & Wipe", icon: "shred" },
   { id: "tools", label: "System Tools", icon: "tools" },
@@ -86,25 +125,69 @@ const PAGES = [
 let current = "health";
 
 // Background activity per page (long jobs keep running across tab changes).
+// ACT = UI-side jobs; JOBS = engine jobs (copies, repairs) polled from Rust.
 const ACT = {};
+const JOBS = { list: [], watchers: {}, timer: null };
 function setAct(page, text) {
   if (text) ACT[page] = text; else delete ACT[page];
   renderNav();
-  const box = document.getElementById("activity");
-  if (box) box.innerHTML = Object.entries(ACT).map(([p, t]) => `<div class="act" data-go="${p}"><span class="spin sm"></span>${esc(t)}</div>`).join("");
+  renderActivity();
 }
+const pageBusy = (id) => !!ACT[id] || JOBS.list.some((j) => j.state === "running" && j.page === id);
+function jobPct(j) {
+  if (j.total_bytes) return Math.min(100, (j.done_bytes / j.total_bytes) * 100);
+  if (j.total_items) return Math.min(100, (j.done_items / j.total_items) * 100);
+  return null;
+}
+function renderActivity() {
+  const box = document.getElementById("activity");
+  if (!box) return;
+  const ui = Object.entries(ACT).map(([p, t]) => `<div class="act" data-go="${p}"><span class="spin sm"></span><span class="act-t">${esc(t)}</span></div>`);
+  const eng = JOBS.list.filter((j) => j.state === "running").map((j) => {
+    const pct = jobPct(j);
+    return `<div class="act" data-go="${esc(j.page)}"><span class="spin sm"></span><span class="act-t">${esc(j.title)}${pct !== null ? ` <b>${pct.toFixed(0)}%</b>` : ""}</span><button class="act-x" data-cancel="${j.id}" title="Cancel">✕</button>${pct !== null ? `<i class="act-bar" style="width:${pct}%"></i>` : ""}</div>`;
+  });
+  box.innerHTML = ui.concat(eng).join("");
+}
+/** Track an engine job; `onDone(job)` runs when it finishes, whatever page is open. */
+function watchJob(id, onDone, quiet = false) {
+  JOBS.watchers[id] = { onDone, quiet };
+  pollJobs();
+}
+function pollJobs() { if (!JOBS.timer) JOBS.timer = setTimeout(jobTick, 60); }
+async function jobTick() {
+  JOBS.timer = null;
+  try { JOBS.list = await invoke("jobs_list"); } catch { JOBS.list = []; }
+  for (const j of JOBS.list) {
+    const w = JOBS.watchers[j.id];
+    if (w && j.state !== "running") {
+      delete JOBS.watchers[j.id];
+      if (!w.quiet) toast(`${j.title} - ${j.message || j.state}`, j.state === "failed");
+      try { w.onDone && w.onDone(j); } catch (e) { console.error(e); }
+    }
+  }
+  renderActivity();
+  renderNav();
+  document.dispatchEvent(new CustomEvent("mdw-jobs"));
+  if (JOBS.list.some((j) => j.state === "running") || Object.keys(JOBS.watchers).length) JOBS.timer = setTimeout(jobTick, 600);
+}
+document.addEventListener("click", (e) => {
+  const c = e.target.closest("[data-cancel]");
+  if (c) { e.stopPropagation(); invoke("job_cancel", { id: +c.dataset.cancel }); }
+}, true);
 
 function renderNav() {
   $("#nav").innerHTML = PAGES.map((p) =>
     p.sec
       ? `<div class="nav-sec">${esc(p.sec)}</div>`
       : `<button class="nav-item ${p.id === current ? "active" : ""}" data-go="${p.id}">${icon(p.icon)}<span>${esc(p.label)}</span>${
-          ACT[p.id] ? '<span class="spin sm nav-spin"></span>' : p.id === "updates" && S.updates && updPending().length ? `<span class="badge">${updPending().length}</span>` : ""
+          pageBusy(p.id) ? '<span class="spin sm nav-spin"></span>' : p.id === "updates" && S.updates && updPending().length ? `<span class="badge">${updPending().length}</span>` : ""
         }</button>`
   ).join("");
 }
 
 function go(id) {
+  if (current !== id) document.dispatchEvent(new CustomEvent("mdw-leave", { detail: current }));
   current = id;
   renderNav();
   const p = PAGES.find((x) => x.id === id);

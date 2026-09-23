@@ -1924,7 +1924,7 @@ dependencies = [
 
 [[package]]
 name = "mdw-app"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "mdw-core",
@@ -1937,7 +1937,7 @@ dependencies = [
 
 [[package]]
 name = "mdw-cli"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1949,7 +1949,7 @@ dependencies = [
 
 [[package]]
 name = "mdw-core"
-version = "0.1.2"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "blake3",
