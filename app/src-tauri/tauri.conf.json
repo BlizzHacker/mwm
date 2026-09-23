@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "MDW",
-  "mainBinaryName": "MDW",
-  "version": "0.1.1",
+  "mainBinaryName": "MoveDigitalWeight",
+  "version": "0.1.2",
   "identifier": "com.moveweight.mdw",
   "build": {
     "frontendDist": "../ui"

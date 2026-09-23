@@ -69,7 +69,8 @@ pub fn data_dir() -> PathBuf {
     } else {
         env_path("XDG_DATA_HOME").unwrap_or_else(|| home().join(".local/share"))
     };
-    let dir = base.join("MDW");
+    // Kept apart from the install folder so an uninstall never takes backups with it.
+    let dir = if cfg!(windows) { base.join("MoveWeight").join("MDW") } else { base.join("MDW") };
     let _ = std::fs::create_dir_all(&dir);
     dir
 }

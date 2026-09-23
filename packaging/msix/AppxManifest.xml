@@ -37,7 +37,7 @@
   </Resources>
 
   <Applications>
-    <Application Id="MDW" Executable="MDW.exe" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="MDW" Executable="MoveDigitalWeight.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="MDW - Move Digital Weight"
         Description="Clean junk, uninstall cleanly, tame startup."
