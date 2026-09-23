@@ -1,0 +1,48 @@
+<?xml version='1.0' standalone='yes'?>
+<!DOCTYPE PLUGIN [
+<!ENTITY name      "mwm">
+<!ENTITY author    "MoveWeight">
+<!ENTITY version   "@VERSION@">
+<!ENTITY gitURL    "https://github.com/BlizzHacker/mwm/releases/download/v&version;">
+<!ENTITY pluginURL "https://github.com/BlizzHacker/mwm/releases/latest/download/mwm.plg">
+<!ENTITY plugdir   "/boot/config/plugins/&name;">
+]>
+<!-- MWM - Move Weight Manager for Unraid: static binary + browser UI on port 7777.
+     The binary and the access token live on the flash drive so they survive reboots. -->
+<PLUGIN name="&name;" author="&author;" version="&version;" pluginURL="&pluginURL;" min="6.9.0" support="https://github.com/BlizzHacker/mwm/issues">
+
+<CHANGES>
+### &version;
+- Array, SMART, Docker and ZFS dashboard, Commander file manager, keys vault, repair toolkit.
+</CHANGES>
+
+<FILE Name="&plugdir;/mwm-&version;">
+<URL>&gitURL;/mwm-linux-x86_64</URL>
+<SHA256>@SHA256@</SHA256>
+</FILE>
+
+<FILE Run="/bin/bash">
+<INLINE>
+# Keep only the current binary on flash, install it, start the web UI.
+find &plugdir; -maxdepth 1 -name 'mwm-*' ! -name 'mwm-&version;' -delete
+install -m 0755 &plugdir;/mwm-&version; /usr/local/bin/mwm
+mkdir -p &plugdir;/data
+pkill -x mwm 2>/dev/null
+XDG_DATA_HOME=&plugdir;/data nohup /usr/local/bin/mwm serve --bind 0.0.0.0:7777 >/var/log/mwm.log 2>&amp;1 &amp;
+sleep 1
+echo ""
+echo "MWM web UI:  http://$(hostname):7777/?token=$(XDG_DATA_HOME=&plugdir;/data /usr/local/bin/mwm serve --show-token)"
+echo "CLI:         mwm info | mwm server | mwm scan | mwm keys"
+</INLINE>
+</FILE>
+
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+pkill -x mwm 2>/dev/null
+rm -f /usr/local/bin/mwm
+rm -rf &plugdir;
+echo "MWM removed."
+</INLINE>
+</FILE>
+
+</PLUGIN>

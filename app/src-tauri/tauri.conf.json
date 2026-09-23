@@ -1,9 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "MDW",
-  "mainBinaryName": "MoveDigitalWeight",
-  "version": "0.2.0",
-  "identifier": "com.moveweight.mdw",
+  "productName": "MWM",
+  "mainBinaryName": "MoveWeightManager",
+  "version": "0.3.0",
+  "identifier": "com.moveweight.mwm",
   "build": {
     "frontendDist": "../ui"
   },
@@ -12,7 +12,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "MDW - Move Digital Weight",
+        "title": "MWM - Move Weight Manager",
         "width": 1320,
         "height": 860,
         "minWidth": 980,
@@ -30,9 +30,9 @@
     "publisher": "MoveWeight",
     "copyright": "© 2026 MoveWeight Foundation. GPL-3.0-or-later.",
     "category": "Utility",
-    "shortDescription": "MDW - Move Digital Weight: clean junk, uninstall cleanly, tame startup.",
+    "shortDescription": "MWM - Move Weight Manager: clean junk, uninstall cleanly, tame startup.",
     "longDescription": "Open-source PC cleaner and uninstaller. Replaces CCleaner and Revo Uninstaller: junk and browser cleaning, uninstall with leftover removal, startup manager, software updates via winget, duplicate finder, disk analyzer and secure delete.",
-    "homepage": "https://moveweight.com/mdw",
+    "homepage": "https://moveweight.com/mwm",
     "license": "GPL-3.0-or-later",
     "icon": [
       "icons/32x32.png",

@@ -1,10 +1,53 @@
-/* MDW - Move Digital Weight. Plain JS UI over the Tauri commands in main.rs.
+/* MWM - Move Weight Manager. Plain JS UI over the Tauri commands in main.rs.
    Outside Tauri (a normal browser) it runs against demo data in demo.js. */
 "use strict";
 
 const TAURI = window.__TAURI__;
-const DEMO = !TAURI;
-const invoke = (cmd, args = {}) => (DEMO ? window.MDW_DEMO(cmd, args) : TAURI.core.invoke(cmd, args));
+// Three hosts, one UI: the desktop app (Tauri), `mwm serve` on a server (the
+// page carries <meta name="mwm-web">), or a plain static host = demo data.
+const WEB = !TAURI && !!document.querySelector('meta[name="mwm-web"]');
+const DEMO = !TAURI && !WEB;
+async function webCall(cmd, args) {
+  const r = await fetch(`api/${cmd}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(args || {}), credentials: "same-origin" });
+  const t = await r.text();
+  if (r.status === 401) { location.reload(); throw "Session expired"; }
+  if (!r.ok) throw t || r.statusText;
+  return t ? JSON.parse(t) : null;
+}
+/** Folder / file pickers and "save as" that work in the app and in a browser. */
+async function pickFolder(current = "") {
+  if (TAURI) return TAURI.dialog.open({ directory: true, multiple: false });
+  return ask("Choose folder", "Folder path on the machine running MWM", current, "Use folder");
+}
+async function pickFiles() {
+  if (TAURI) return [].concat((await TAURI.dialog.open({ multiple: true })) || []);
+  const p = await ask("Choose file", "Full path on the machine running MWM", "", "Use");
+  return p ? [p] : [];
+}
+async function saveText(name, text, ext = "html") {
+  if (TAURI) {
+    const path = await TAURI.dialog.save({ defaultPath: name, filters: [{ name: ext.toUpperCase(), extensions: [ext] }] });
+    if (!path) return null;
+    await invoke("files_write", { path, text });
+    return path;
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], { type: ext === "html" ? "text/html" : "text/plain" }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  return name;
+}
+const localInvoke = (cmd, args = {}) =>
+  DEMO ? window.MWM_DEMO(cmd, args)
+  : WEB ? webCall(cmd, args)
+  : cmd === "relaunch_admin" ? TAURI.core.invoke(cmd)
+  : TAURI.core.invoke("api", { cmd, args });
+// Which machine the UI is driving: "" = this one, otherwise a saved connection id.
+let TARGET = (() => { try { return localStorage.getItem("mwm.target") || ""; } catch { return ""; } })();
+const LOCAL_ONLY = new Set(["relaunch_admin", "open_default", "edit_file", "terminal", "reveal", "launch_tool", "conn_list", "conn_save", "conn_remove", "remote_call"]);
+const invoke = (cmd, args = {}) =>
+  TARGET && !LOCAL_ONLY.has(cmd) ? localInvoke("remote_call", { id: TARGET, cmd, args }) : localInvoke(cmd, args);
 
 // ------------------------------------------------------------ helpers ----
 const $ = (s, r = document) => r.querySelector(s);
@@ -18,6 +61,14 @@ function bytes(n) {
   return `${n.toFixed(i && n < 100 ? 1 : 0)} ${u[i]}`;
 }
 const num = (n) => Number(n || 0).toLocaleString();
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); }
+  catch {
+    const ta = document.createElement("textarea");
+    ta.value = t; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove();
+  }
+  toast("Copied to clipboard.");
+}
 function toast(msg, err = false) {
   const t = document.createElement("div");
   t.className = "toast" + (err ? " err" : "");
@@ -27,7 +78,7 @@ function toast(msg, err = false) {
 }
 const loading = (msg) => `<div class="loading"><span class="spin lg"></span><div>${esc(msg)}</div></div>`;
 function modal(html) { $("#modal-card").innerHTML = html; $("#modal").classList.remove("hidden"); }
-function closeModal() { $("#modal").classList.add("hidden"); document.dispatchEvent(new CustomEvent("mdw-modal-closed")); }
+function closeModal() { $("#modal").classList.add("hidden"); document.dispatchEvent(new CustomEvent("mwm-modal-closed")); }
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && modalOpen()) closeModal(); });
 const modalOpen = () => !$("#modal").classList.contains("hidden");
 /** Small promise-based prompt: resolves to the entered string or null. */
@@ -81,6 +132,8 @@ const I = {
   wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-.5-.5-2.5z"/>',
   net: '<path d="M2 9a15 15 0 0 1 20 0"/><path d="M5.5 12.5a10 10 0 0 1 13 0"/><path d="M9 16a5 5 0 0 1 6 0"/><circle cx="12" cy="19.5" r="1"/>',
   alert: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/>',
+  key: '<circle cx="8" cy="15" r="4"/><path d="M10.8 12.2 20 3M16 7l3 3M14 9l2 2"/>',
+  server: '<rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/>',
   weight: '<path d="M6 9h12l2 11H4z"/><circle cx="12" cy="6" r="3"/>',
 };
 const icon = (k) => `<svg viewBox="0 0 24 24">${I[k] || ""}</svg>`;
@@ -99,6 +152,7 @@ const S = {
 const PAGES = [
   { sec: "Overview" },
   { id: "health", label: "Health Check", icon: "health" },
+  { id: "fleet", label: "Machines", icon: "server" },
   { sec: "Clean" },
   { id: "cleaner", label: "Custom Clean", icon: "clean" },
   { id: "dupes", label: "Duplicate Finder", icon: "dupes" },
@@ -113,14 +167,16 @@ const PAGES = [
   { id: "drivers", label: "Drivers", icon: "drivers" },
   { sec: "Tech Toolkit" },
   { id: "report", label: "System Report", icon: "report" },
+  { id: "keys", label: "Keys & Licenses", icon: "key" },
   { id: "repair", label: "Repair", icon: "wrench" },
   { id: "security", label: "Security", icon: "shield" },
   { id: "network", label: "Network", icon: "net" },
   { id: "events", label: "Crashes & Events", icon: "alert" },
+  { id: "server", label: "Server / NAS", icon: "server" },
   { sec: "Privacy & tools" },
   { id: "privacy", label: "Shredder & Wipe", icon: "shred" },
   { id: "tools", label: "System Tools", icon: "tools" },
-  { id: "about", label: "About MDW", icon: "about" },
+  { id: "about", label: "About MWM", icon: "about" },
 ];
 let current = "health";
 
@@ -168,7 +224,7 @@ async function jobTick() {
   }
   renderActivity();
   renderNav();
-  document.dispatchEvent(new CustomEvent("mdw-jobs"));
+  document.dispatchEvent(new CustomEvent("mwm-jobs"));
   if (JOBS.list.some((j) => j.state === "running") || Object.keys(JOBS.watchers).length) JOBS.timer = setTimeout(jobTick, 600);
 }
 document.addEventListener("click", (e) => {
@@ -187,7 +243,7 @@ function renderNav() {
 }
 
 function go(id) {
-  if (current !== id) document.dispatchEvent(new CustomEvent("mdw-leave", { detail: current }));
+  if (current !== id) document.dispatchEvent(new CustomEvent("mwm-leave", { detail: current }));
   current = id;
   renderNav();
   const p = PAGES.find((x) => x.id === id);
@@ -205,7 +261,7 @@ document.addEventListener("click", (e) => {
 
 function adminNote(needed) {
   if (!needed || S.info?.elevated) return "";
-  return `<div class="note warn-n" style="margin-bottom:14px">Some items need administrator rights. <a href="#" data-admin>Restart MDW as administrator</a> to include them.</div>`;
+  return `<div class="note warn-n" style="margin-bottom:14px">Some items need administrator rights. <a href="#" data-admin>Restart MWM as administrator</a> to include them.</div>`;
 }
 document.addEventListener("click", (e) => {
   if (e.target.closest("[data-admin]")) {
@@ -239,9 +295,9 @@ VIEWS.health = async function () {
     <div class="card hero">
       ${gauge(scanned ? usedPct : 0, main ? `${Math.round(usedPct * 100)}%` : "--", main ? `${esc(main.mount)} used` : "disk")}
       <div style="flex:1">
-        <div class="label">Digital weight on this machine</div>
+        <div class="label">Junk weight on this machine</div>
         <h2>${
-          cleaned ? `You just moved <span class="accent">${bytes(cleaned)}</span> of digital weight.`
+          cleaned ? `You just moved <span class="accent">${bytes(cleaned)}</span> of junk.`
           : junk === null ? "Let's see what's weighing your PC down."
           : junk > 0 ? `<span class="accent">${bytes(junk)}</span> of junk is ready to go.`
           : "Lean and clean. Nothing to move right now."
@@ -289,7 +345,7 @@ VIEWS.health = async function () {
     const res = await guard(() => invoke("cleaner_clean", { ids }));
     if (res) {
       S.lastClean = res.reduce((a, r) => a + r.bytes_freed, 0);
-      toast(`Moved ${bytes(S.lastClean)} of digital weight.`);
+      toast(`Moved ${bytes(S.lastClean)} of junk.`);
       S.scan = null;
       S.info = await invoke("system_info");
       healthScan();
@@ -381,7 +437,7 @@ function drawCleaner() {
       ${risky.length ? `<div class="note warn-n">Heads up: ${risky.map((i) => `<b>${esc(i.category)} - ${esc(i.name)}</b>`).join(", ")}. ${risky.map((i) => esc(i.warning || "Review before cleaning.")).join(" ")}</div>` : ""}
       <div class="row" style="justify-content:flex-end;margin-top:18px"><button class="btn" data-close>Cancel</button><button class="btn primary" id="cl-go">Clean now</button></div>`);
     $("#cl-go").onclick = async () => {
-      $("#modal-card").innerHTML = loading("Moving digital weight...");
+      $("#modal-card").innerHTML = loading("Moving junk weight...");
       const res = await guard(() => invoke("cleaner_clean", { ids: sel.map((i) => i.id) }));
       if (!res) return closeModal();
       const freed = res.reduce((a, r) => a + r.bytes_freed, 0);
@@ -441,7 +497,7 @@ function drawApps() {
 
 function uninstallFlow(app) {
   modal(`<h2>Uninstall ${esc(app.name)}?</h2>
-    <p class="muted">MDW runs the program's own uninstaller first, then hunts for leftover folders, shortcuts and registry keys - like Revo's moderate mode.</p>
+    <p class="muted">MWM runs the program's own uninstaller first, then hunts for leftover folders, shortcuts and registry keys - like Revo's moderate mode.</p>
     <div class="note">Nothing is lost for good: leftovers go to the Recycle Bin and registry keys are backed up as <span class="mono">.reg</span> files before removal.</div>
     <div class="row" style="justify-content:flex-end;margin-top:18px"><button class="btn" data-close>Cancel</button><button class="btn primary" id="un-go">Uninstall</button></div>`);
   $("#un-go").onclick = async () => {
@@ -638,8 +694,7 @@ function drawDupes() {
   $("#d-root").oninput = (e) => (dupRoot = e.target.value);
   $("#d-min").onchange = (e) => (dupMin = +e.target.value);
   $("#d-pick").onclick = async () => {
-    if (DEMO) return toast("Folder picker works in the desktop app.");
-    const p = await TAURI.dialog.open({ directory: true, multiple: false });
+    const p = await pickFolder(dupRoot);
     if (p) { dupRoot = p; drawDupes(); }
   };
   $("#d-go").onclick = async () => {
@@ -696,7 +751,7 @@ function drawDisk() {
       </div>`}</div>`;
   $$("[data-drive]").forEach((b) => (b.onclick = () => { diskRoot = b.dataset.drive; drawDisk(); }));
   $("#dk-root").oninput = (e) => (diskRoot = e.target.value);
-  $("#dk-pick").onclick = async () => { if (DEMO) return; const p = await TAURI.dialog.open({ directory: true }); if (p) { diskRoot = p; drawDisk(); } };
+  $("#dk-pick").onclick = async () => { const p = await pickFolder(diskRoot); if (p) { diskRoot = p; drawDisk(); } };
   $("#dk-go").onclick = async () => {
     $("#page").lastElementChild.innerHTML = loading(`Measuring ${diskRoot} - a whole drive can take a minute...`);
     setAct("disk", `Analyzing ${diskRoot}`);
@@ -735,7 +790,7 @@ VIEWS.drivers = async function () {
   const d = await guard(() => invoke("drivers_list"));
   if (!d || current !== "drivers") return;
   const old = d.filter((x) => x.age_years >= 3).length;
-  $("#page").innerHTML = `<div class="note" style="margin-bottom:14px">MDW never downloads drivers from third-party mirrors - that's how "driver updater" tools spread malware and broken drivers. Get driver updates from <b>Windows Update → Optional updates</b> or your PC/GPU maker. ${old ? `<b class="warn">${old} drivers are over 3 years old.</b>` : ""}</div>
+  $("#page").innerHTML = `<div class="note" style="margin-bottom:14px">MWM never downloads drivers from third-party mirrors - that's how "driver updater" tools spread malware and broken drivers. Get driver updates from <b>Windows Update → Optional updates</b> or your PC/GPU maker. ${old ? `<b class="warn">${old} drivers are over 3 years old.</b>` : ""}</div>
     <div class="card" style="padding:0"><div class="scroll"><table class="table"><thead><tr><th>Device</th><th>Provider</th><th>Version</th><th class="num">Date</th></tr></thead>
     <tbody>${d.map((x) => `<tr><td><div class="cell-main">${esc(x.device)}</div><div class="cell-sub">${esc(x.class)}</div></td><td class="muted">${esc(x.provider)}</td><td class="mono muted">${esc(x.version)}</td><td class="num ${x.age_years >= 3 ? "warn" : "muted"}">${esc(x.date)}</td></tr>`).join("")}</tbody></table></div></div>`;
 };
@@ -764,8 +819,8 @@ VIEWS.privacy = function () {
     </div>`;
   let picked = [];
   const show = () => { $("#sh-list").innerHTML = picked.map(esc).join("<br>"); $("#sh-go").disabled = !picked.length; };
-  $("#sh-files").onclick = async () => { if (DEMO) return; const p = await TAURI.dialog.open({ multiple: true }); if (p) { picked = [].concat(p); show(); } };
-  $("#sh-dir").onclick = async () => { if (DEMO) return; const p = await TAURI.dialog.open({ directory: true }); if (p) { picked = [p]; show(); } };
+  $("#sh-files").onclick = async () => { const p = await pickFiles(); if (p.length) { picked = p; show(); } };
+  $("#sh-dir").onclick = async () => { const p = await pickFolder(); if (p) { picked = [p]; show(); } };
   $("#sh-go").onclick = () => {
     modal(`<h2 class="danger-t">Destroy ${picked.length} item${picked.length > 1 ? "s" : ""} forever?</h2><p class="muted">This cannot be undone - shredded files skip the Recycle Bin and cannot be recovered by anyone, including you.</p>
       <div class="mono muted">${picked.map(esc).join("<br>")}</div>
@@ -784,7 +839,7 @@ VIEWS.privacy = function () {
       <div class="row" style="justify-content:flex-end;margin-top:18px"><button class="btn" data-close>Cancel</button><button class="btn primary" id="wf-yes">Start wipe</button></div>`);
     $("#wf-yes").onclick = async () => {
       closeModal();
-      toast(`Wiping free space on ${d}... MDW will tell you when it's finished.`);
+      toast(`Wiping free space on ${d}... MWM will tell you when it's finished.`);
       setAct("privacy", `Wiping free space on ${d}`);
       const r = await guard(() => invoke("wipe_free", { dir: d }));
       setAct("privacy", null);
@@ -821,8 +876,8 @@ VIEWS.tools = function () {
 VIEWS.about = function () {
   const i = S.info || {};
   $("#page").innerHTML = `<div class="grid g2">
-    <div class="card stack"><div class="row"><svg class="logo" viewBox="0 0 64 64" style="width:54px;height:54px">${$(".logo").innerHTML}</svg><div><div class="big">MDW</div><div class="muted">Move Digital Weight - v${esc(i.version || "")}</div></div></div>
-      <div>Free and open source. No ads, no "Pro" upsell, no telemetry. MDW replaces CCleaner and Revo Uninstaller with one lightweight app.</div>
+    <div class="card stack"><div class="row"><svg class="logo" viewBox="0 0 1024 1024" style="width:64px;height:64px">${$(".logo").innerHTML}</svg><div><div class="big">MWM</div><div class="muted">Move Weight Manager - v${esc(i.version || "")}</div></div></div>
+      <div>Free and open source. No ads, no "Pro" upsell, no telemetry. MWM replaces CCleaner and Revo Uninstaller with one lightweight app.</div>
       <div class="muted">License: GPL-3.0-or-later - Made by the MoveWeight Foundation.</div>
       <div class="row">${i.elevated ? '<span class="pill low">Running as administrator</span>' : '<button class="btn" data-admin>Restart as administrator</button>'}</div></div>
     <div class="card"><div class="label" style="margin-bottom:8px">This machine</div>
@@ -833,7 +888,7 @@ VIEWS.about = function () {
         <tr><td class="muted">Memory</td><td>${bytes(i.memory_used)} used of ${bytes(i.memory_total)}</td></tr>
         <tr><td class="muted">Up since</td><td>${i.uptime_secs ? new Date(Date.now() - i.uptime_secs * 1000).toLocaleString() : ""}</td></tr>
       </tbody></table></div>
-    <div class="card" style="grid-column:1/-1"><div class="label" style="margin-bottom:8px">How MDW keeps you safe</div>
+    <div class="card" style="grid-column:1/-1"><div class="label" style="margin-bottom:8px">How MWM keeps you safe</div>
       <ul class="muted" style="margin:0;padding-left:18px;line-height:1.8">
         <li>Scans never delete anything. Cleaning only touches caches and temp files, and skips anything in use.</li>
         <li>Uninstall leftovers go to the Recycle Bin; registry keys are exported to <span class="mono">.reg</span> backups before removal.</li>
@@ -848,8 +903,11 @@ VIEWS.about = function () {
   try {
     S.info = await invoke("system_info");
   } catch (e) {
-    S.info = { disks: [], elevated: false };
+    // Last-used remote machine is unreachable: start on this PC instead.
+    if (TARGET) { TARGET = ""; try { localStorage.setItem("mwm.target", ""); } catch {} toast(`Couldn't reach the last machine - showing this PC. (${e})`, true); }
+    S.info = await invoke("system_info").catch(() => ({ disks: [], elevated: false }));
   }
+  await renderSwitcher();
   $("#elev").className = "elev" + (S.info.elevated ? " admin" : "");
   $("#elev").innerHTML = `<span class="dot"></span>${S.info.elevated ? "Administrator" : `Standard user - <a href="#" data-admin>elevate</a>`}`;
   $("#ver").textContent = `v${S.info.version || ""}${DEMO ? " - web demo" : ""} - ${S.info.hostname || ""}`;

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  MDW - Move Digital Weight: Microsoft Store (MSIX) manifest.
+  MWM - Move Weight Manager: Microsoft Store (MSIX) manifest.
   Identity Name / Publisher MUST match the reservation in Partner Center
   (Product identity page) or the upload is rejected. Publisher below is the
   MOVEWEIGHT seller account; Name is the expected reservation name.
@@ -13,13 +13,13 @@
   IgnorableNamespaces="uap desktop6 rescap">
 
   <Identity
-    Name="MOVEWEIGHT.MDWMoveDigitalWeight"
+    Name="MOVEWEIGHT.MoveWeightManager"
     Publisher="CN=6375D74B-5E4F-45B4-B246-B29507C1332A"
     Version="__VERSION__.0"
     ProcessorArchitecture="x64" />
 
   <Properties>
-    <DisplayName>MDW - Move Digital Weight</DisplayName>
+    <DisplayName>MWM - Move Weight Manager</DisplayName>
     <PublisherDisplayName>MOVEWEIGHT</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
     <Description>Free, open-source PC cleaner and uninstaller. Clean junk and browser caches, uninstall programs with leftover removal, manage startup apps and services, update software via winget, find duplicates, analyze disk space and securely delete files.</Description>
@@ -37,14 +37,14 @@
   </Resources>
 
   <Applications>
-    <Application Id="MDW" Executable="MoveDigitalWeight.exe" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="MWM" Executable="MoveWeightManager.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
-        DisplayName="MDW - Move Digital Weight"
+        DisplayName="MWM - Move Weight Manager"
         Description="Clean junk, uninstall cleanly, tame startup."
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">
-        <uap:DefaultTile ShortName="MDW" />
+        <uap:DefaultTile ShortName="MWM" />
       </uap:VisualElements>
     </Application>
   </Applications>

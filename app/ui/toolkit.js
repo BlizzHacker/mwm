@@ -1,4 +1,4 @@
-/* MDW Tech Toolkit - the Geek Squad MRI / Hiren's-style bench: system report,
+/* MWM Tech Toolkit - the Geek Squad MRI / Hiren's-style bench: system report,
    repairs, security, network, crashes. Repairs are engine jobs, so they keep
    running (and stay visible in the sidebar) while you use other pages. */
 "use strict";
@@ -82,20 +82,18 @@ async function exportReport() {
   TK.events = TK.events || ev;
   const rows = (o) => Object.entries(o).filter(([, v]) => v !== null && typeof v !== "object").map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join("");
   const table = (list) => { const a = arr(list); if (!a.length) return "<p>None</p>"; const ks = Object.keys(a[0]); return `<table><tr>${ks.map((k) => `<th>${esc(k)}</th>`).join("")}</tr>${a.map((x) => `<tr>${ks.map((k) => `<td>${esc(typeof x[k] === "object" ? JSON.stringify(x[k]) : x[k])}</td>`).join("")}</tr>`).join("")}</table>`; };
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>MDW System Report - ${esc(S.info?.hostname || "")}</title>
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>MWM System Report - ${esc(S.info?.hostname || "")}</title>
 <style>body{font:14px/1.5 Segoe UI,system-ui,sans-serif;margin:32px;color:#1b2232}h1{margin:0}h2{margin-top:28px;border-bottom:2px solid #5ee08f}table{border-collapse:collapse;margin:8px 0;width:100%}th,td{border:1px solid #d7dbe4;padding:5px 8px;text-align:left;vertical-align:top}th{background:#f2f4f8}</style></head><body>
-<h1>MDW System Report</h1><p>${esc(S.info?.hostname || "")} - ${new Date().toLocaleString()} - MDW v${esc(S.info?.version || "")}</p>
+<h1>MWM System Report</h1><p>${esc(S.info?.hostname || "")} - ${new Date().toLocaleString()} - MWM v${esc(S.info?.version || "")}</p>
 <h2>System</h2><table>${rows({ ...r, OemKey: r.OemKey ? "(present - hidden in exported report)" : "" })}</table>
 <h2>Memory</h2>${table(r.Memory)}<h2>Graphics</h2>${table(r.Gpus)}<h2>Drives</h2>${table(r.Disks)}<h2>Battery</h2>${table(r.Battery)}
 ${sec ? `<h2>Security</h2><table>${rows(sec)}</table><h3>Firewall</h3>${table(sec.Firewall)}<h3>Threat history</h3>${table(sec.Threats)}` : ""}
 ${ev ? `<h2>Crashes / unexpected shutdowns (60 days)</h2>${table(ev.Crashes)}<h2>Recent errors (7 days)</h2>${table(arr(ev.Errors).slice(0, 80))}` : ""}
 </body></html>`;
-  if (DEMO) return toast("Export works in the desktop app.");
-  const path = await TAURI.dialog.save({ defaultPath: `MDW-Report-${S.info?.hostname || "PC"}-${new Date().toISOString().slice(0, 10)}.html`, filters: [{ name: "HTML", extensions: ["html"] }] });
-  if (!path) return;
-  if (await guard(() => invoke("files_write", { path, text: html }).then(() => true))) {
+  const saved = await guard(() => saveText(`MWM-Report-${S.info?.hostname || "PC"}-${new Date().toISOString().slice(0, 10)}.html`, html));
+  if (saved) {
     toast("Report saved.");
-    invoke("open_default", { path });
+    if (TAURI) invoke("open_default", { path: saved });
   }
 }
 
@@ -153,7 +151,7 @@ function taskCard(t) {
       ${running ? `<button class="btn small danger" data-cancel="${j.id}">Stop</button>` : ""}
       ${j ? `<button class="btn small ghost" data-toggle-out="${t.id}">${TK.open === t.id ? "Hide output" : "Show output"}</button>` : ""}</div>${out}</div>`;
 }
-document.addEventListener("mdw-jobs", () => { if (current === "repair" && TK.tasks) drawRepair(); });
+document.addEventListener("mwm-jobs", () => { if (current === "repair" && TK.tasks) drawRepair(); });
 
 // -------------------------------------------------------------- Security ----
 VIEWS.security = async function () {

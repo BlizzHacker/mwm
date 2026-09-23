@@ -1,4 +1,4 @@
-/* MDW Commander - dual-pane, keyboard-first file manager in the spirit of
+/* MWM Commander - dual-pane, keyboard-first file manager in the spirit of
    Double Commander / Total Commander / Geek Squad's FMOD. Independent code.
    Keys: Tab switch pane, Enter open, Backspace up, Space/Ins select, Ctrl+A all,
    F2 rename, F3 view, F4 edit, F5 copy, F6 move, F7 new folder, F8/Del recycle,
@@ -8,11 +8,11 @@
 
 const CMD = {
   active: 0,
-  hidden: (() => { try { return localStorage.getItem("mdw.hidden") === "1"; } catch { return false; } })(),
+  hidden: (() => { try { return localStorage.getItem("mwm.hidden") === "1"; } catch { return false; } })(),
   roots: [],
   panes: [0, 1].map((i) => ({
     i,
-    path: (() => { try { return localStorage.getItem(`mdw.pane${i}`) || ""; } catch { return ""; } })(),
+    path: (() => { try { return localStorage.getItem(`mwm.pane${i}`) || ""; } catch { return ""; } })(),
     listing: null,
     rows: [],
     sel: new Set(),
@@ -53,7 +53,7 @@ async function loadPane(p, path, keepCursorName) {
     p.error = "";
     p.sel.clear();
     p.sizes = {};
-    try { localStorage.setItem(`mdw.pane${p.i}`, p.path); } catch {}
+    try { localStorage.setItem(`mwm.pane${p.i}`, p.path); } catch {}
   } catch (e) {
     p.error = String(e);
     if (!p.listing) p.listing = { path, parent: null, entries: [], free: 0 };
@@ -282,7 +282,7 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
-document.addEventListener("mdw-modal-closed", () => { if (current === "files") document.activeElement?.blur(); });
+document.addEventListener("mwm-modal-closed", () => { if (current === "files") document.activeElement?.blur(); });
 
 // ----------------------------------------------------------- commands ----
 const refreshBoth = () => Promise.all(CMD.panes.map((p) => loadPane(p, p.path, cur(p)?.name)));
@@ -296,7 +296,7 @@ async function runCmd(c) {
     case "refresh": return refreshBoth();
     case "hidden":
       CMD.hidden = !CMD.hidden;
-      try { localStorage.setItem("mdw.hidden", CMD.hidden ? "1" : "0"); } catch {}
+      try { localStorage.setItem("mwm.hidden", CMD.hidden ? "1" : "0"); } catch {}
       CMD.panes.forEach((x) => { buildRows(x); });
       return VIEWS.files();
     case "swap": {
@@ -472,7 +472,7 @@ function drawResults() {
     loadPane(active(), f.slice(0, cut) || f, f.slice(cut + 1));
   }));
 }
-document.addEventListener("mdw-jobs", () => { if (lastSearch && $("#s-res")) drawResults(); });
+document.addEventListener("mwm-jobs", () => { if (lastSearch && $("#s-res")) drawResults(); });
 
 // ------------------------------------------------------- multi-rename ----
 function multiRenameDialog(p) {

@@ -1,13 +1,13 @@
 [workspace]
 resolver = "2"
-members = ["crates/mdw-core", "crates/mdw-cli", "app/src-tauri"]
+members = ["crates/mwm-core", "crates/mwm-cli", "app/src-tauri"]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
 authors = ["MoveWeight <hello@moveweight.com>"]
-repository = "https://github.com/moveweight/mdw"
+repository = "https://github.com/moveweight/mwm"
 
 [workspace.dependencies]
 anyhow = "1"

@@ -41,8 +41,9 @@ a { color: var(--accent-2); }
   padding: 18px 12px;
 }
 .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 20px; }
-.logo { width: 38px; height: 38px; fill: var(--accent); flex: none; }
-.brand-name { font-weight: 800; font-size: 20px; letter-spacing: 0.08em; }
+.logo { width: 46px; height: 46px; flex: none; filter: drop-shadow(0 4px 14px rgba(63, 240, 164, 0.25)); }
+.brand-name { font-weight: 850; font-size: 24px; letter-spacing: 0.12em; line-height: 1.05; }
+.brand-tag { white-space: nowrap; color: var(--accent); font-size: 9.5px; letter-spacing: 0.05em; text-transform: uppercase; margin-top: 2px; opacity: 0.85; }
 .brand-sub { color: var(--muted); font-size: 11.5px; letter-spacing: 0.02em; }
 nav { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; }
 .nav-sec { color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; padding: 14px 10px 6px; }
@@ -254,3 +255,21 @@ select.search { min-width: 0; }
 .kv td:first-child { width: 42%; }
 .console { background: #070a10; color: #b9f5cf; border: 1px solid var(--line); border-radius: 8px; padding: 10px; max-height: 260px; overflow: auto; white-space: pre-wrap; margin-top: 10px; font-size: 12px; user-select: text; }
 .task .pill .spin { vertical-align: -2px; margin-right: 4px; }
+
+.keyval { word-break: break-all; user-select: text; font-size: 13px; }
+
+/* ---------- machine switcher / fleet ---------- */
+#switcher { padding: 0 4px 10px; }
+.sw { width: 100%; display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; cursor: pointer; color: var(--text); text-align: left; }
+.sw:hover { border-color: var(--accent-2); }
+.sw.remote { border-color: var(--accent-2); background: #10283a; }
+.sw .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+.sw .sw-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.sw .sw-t small { display: block; color: var(--muted); font-size: 11px; }
+.sw-menu { background: var(--card-2); border: 1px solid var(--line); border-radius: 10px; margin-top: 6px; padding: 4px; }
+.sw-item { display: flex; gap: 8px; align-items: center; padding: 7px 9px; border-radius: 7px; cursor: pointer; font-size: 13px; }
+.sw-item:hover { background: var(--card); }
+.sw-item.on { color: var(--accent); }
+.remote-banner { background: #10283a; border: 1px solid #1d4a66; color: #bfe6f5; border-radius: 999px; padding: 5px 12px; font-size: 12.5px; }
+.mcard .v { font-size: 18px; font-weight: 700; }
+.mcard .off { opacity: 0.6; }

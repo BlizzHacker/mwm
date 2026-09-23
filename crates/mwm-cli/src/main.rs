@@ -1,12 +1,14 @@
-//! `mdw` - Move Digital Weight from the command line (servers, SSH, scripts).
+//! `mwm` - Move Weight Manager from the command line (servers, SSH, scripts).
 
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use mdw_core::{apps, cleaner, disk, drivers, dupes, procs, shred, startup, sys, updater};
+use mwm_core::{apps, cleaner, disk, drivers, dupes, jobs, keys, procs, server, shred, startup, sys, toolkit, updater};
+
+mod serve;
 
 #[derive(Parser)]
-#[command(name = "mdw", version, about = "MDW - Move Digital Weight: clean junk, uninstall cleanly, tame startup.")]
+#[command(name = "mwm", version, about = "MWM - Move Weight Manager: clean junk, uninstall cleanly, tame startup.")]
 struct Cli {
     /// Print machine-readable JSON instead of tables.
     #[arg(long, global = true)]
@@ -27,7 +29,7 @@ enum Cmd {
     },
     /// Delete junk. Without --ids, cleans the default-on rules.
     Clean {
-        /// Comma-separated rule ids (see `mdw scan`).
+        /// Comma-separated rule ids (see `mwm scan`).
         #[arg(long, value_delimiter = ',')]
         ids: Vec<String>,
         /// Actually delete. Without this, prints what would be cleaned.
@@ -39,7 +41,7 @@ enum Cmd {
         /// Filter by name (case-insensitive substring).
         filter: Option<String>,
     },
-    /// Uninstall a program by id (see `mdw apps --json`), then list leftovers.
+    /// Uninstall a program by id (see `mwm apps --json`), then list leftovers.
     Uninstall {
         id: String,
         #[arg(long)]
@@ -83,6 +85,33 @@ enum Cmd {
     WipeFree { dir: String },
     /// Installed drivers (Windows) / kernel modules (Linux).
     Drivers,
+    /// Serve the full MWM interface in a browser (Proxmox / Unraid / headless).
+    Serve {
+        /// Address to listen on. Use 0.0.0.0:7777 to reach it from your LAN.
+        #[arg(long, default_value = "127.0.0.1:7777")]
+        bind: String,
+        /// Refuse every action that changes the machine.
+        #[arg(long)]
+        read_only: bool,
+        /// Generate a new access token (signs everyone out).
+        #[arg(long)]
+        new_token: bool,
+        /// Print the access token and exit.
+        #[arg(long)]
+        show_token: bool,
+    },
+    /// Product keys, licenses, BitLocker recovery keys, Wi-Fi / SSH keys.
+    Keys,
+    /// Hardware / OS / license report.
+    Report,
+    /// Proxmox guests, ZFS, SMART, Docker, failed services.
+    Server,
+    /// Run a repair task (see `mwm repair --list`).
+    Repair {
+        task: Option<String>,
+        #[arg(long)]
+        list: bool,
+    },
     /// Running programs by memory use.
     Top {
         #[arg(long, default_value_t = 25)]
@@ -125,7 +154,7 @@ fn main() -> anyhow::Result<()> {
         Cmd::Info => {
             let i = sys::info();
             emit(j, &i, || {
-                println!("MDW {} on {} ({}){}", i.version, i.hostname, i.os, if i.elevated { " [admin]" } else { "" });
+                println!("MWM {} on {} ({}){}", i.version, i.hostname, i.os, if i.elevated { " [admin]" } else { "" });
                 println!("CPU {} x{}  RAM {} / {}", i.cpu, i.cores, human(i.memory_used), human(i.memory_total));
                 for d in &i.disks {
                     println!("  {:<22} {:>10} free of {:>10}  {}", d.mount, human(d.free), human(d.total), d.fs);
@@ -177,7 +206,7 @@ fn main() -> anyhow::Result<()> {
                 for r in &res {
                     println!("  {:<24} freed {:>10}  ({} files, {} skipped)", r.id, human(r.bytes_freed), r.files_deleted, r.skipped);
                 }
-                println!("Moved {} of digital weight.", human(total));
+                println!("Moved {} of junk.", human(total));
             });
         }
         Cmd::Apps { filter } => {
@@ -294,6 +323,77 @@ fn main() -> anyhow::Result<()> {
                     println!("{:<50} {:<18} {:<12} {}", x.device, x.version, x.date, x.provider);
                 }
             });
+        }
+        Cmd::Serve { bind, read_only, new_token, show_token } => {
+            if show_token {
+                println!("{}", serve::token(new_token));
+                return Ok(());
+            }
+            serve::run(&bind, read_only, new_token)?;
+        }
+        Cmd::Keys => {
+            let k = keys::list();
+            emit(j, &k, || {
+                for x in &k {
+                    println!("{:<10} {:<44} {}{}", x.kind, x.name, if x.value.is_empty() { "-" } else { &x.value }, if x.note.is_empty() { String::new() } else { format!("   ({})", x.note) });
+                }
+            });
+        }
+        Cmd::Report => println!("{}", serde_json::to_string_pretty(&toolkit::report())?),
+        Cmd::Server => {
+            let v = server::info();
+            if j {
+                println!("{}", serde_json::to_string_pretty(&v)?);
+            } else {
+                println!("platform {}  kernel {}  load {}", v["platform"].as_str().unwrap_or(""), v["kernel"].as_str().unwrap_or(""), v["load"].as_str().unwrap_or(""));
+                if let Some(g) = v["proxmox"]["guests"].as_array() {
+                    println!("
+Guests:");
+                    for x in g {
+                        println!("  {:>5} {:<5} {:<9} {}", x["vmid"], x["type"].as_str().unwrap_or(""), x["status"].as_str().unwrap_or(""), x["name"].as_str().unwrap_or(""));
+                    }
+                }
+                if let Some(z) = v["zfs"].as_array().filter(|z| !z.is_empty()) {
+                    println!("
+ZFS:");
+                    for p in z {
+                        println!("  {:<14} {:<8} cap {}%  {}", p["name"].as_str().unwrap_or(""), p["health"].as_str().unwrap_or(""), p["cap"].as_str().unwrap_or(""), p["scan"].as_str().unwrap_or(""));
+                    }
+                }
+                if let Some(d) = v["smart"].as_array().filter(|d| !d.is_empty()) {
+                    println!("
+SMART:");
+                    for x in d {
+                        println!("  {:<12} {:<34} passed={} temp={} hours={}", x["device"].as_str().unwrap_or(""), x["model"].as_str().unwrap_or(""), x["passed"], x["temp"], x["hours"]);
+                    }
+                }
+                if let Some(f) = v["failed"].as_array().filter(|f| !f.is_empty()) {
+                    println!("
+Failed services: {}", f.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(", "));
+                }
+            }
+        }
+        Cmd::Repair { task, list } => {
+            if list || task.is_none() {
+                for t in toolkit::TASKS {
+                    println!("{:<12} {:<34} {}{}", t.id, t.name, t.description, if t.admin { "  (admin)" } else { "" });
+                }
+                return Ok(());
+            }
+            let id = toolkit::run_task(task.as_deref().unwrap_or_default())?;
+            let mut shown = 0;
+            loop {
+                let jb = jobs::get(id).expect("job");
+                for l in jb.output.iter().skip(shown) {
+                    println!("{l}");
+                }
+                shown = jb.output.len();
+                if jb.state != "running" {
+                    println!("-> {}: {}", jb.state, jb.message);
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(300));
+            }
         }
         Cmd::Top { n } => {
             let mut p = procs::list();

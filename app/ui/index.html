@@ -3,24 +3,25 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MDW - Move Digital Weight</title>
+  <title>MWM - Move Weight Manager</title>
   <link rel="stylesheet" href="app.css" />
 </head>
 <body>
   <aside class="side">
     <div class="brand">
-      <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
-        <rect x="4" y="22" width="8" height="20" rx="2" />
-        <rect x="12" y="16" width="8" height="32" rx="2" />
-        <rect x="20" y="29" width="24" height="6" rx="3" />
-        <rect x="44" y="16" width="8" height="32" rx="2" />
-        <rect x="52" y="22" width="8" height="20" rx="2" />
+      <svg class="logo" viewBox="0 0 1024 1024" aria-hidden="true">
+        <defs><linearGradient id="lg-s" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3ff0a4"/><stop offset="1" stop-color="#1fa8e0"/></linearGradient></defs>
+        <path d="M512 128 L820 232 V500 C820 700 692 834 512 900 C332 834 204 700 204 500 V232 Z" fill="url(#lg-s)"/>
+        <path d="M512 186 L766 272 V500 C766 668 660 780 512 838 C364 780 258 668 258 500 V272 Z" fill="#0b1422"/>
+        <polyline points="286,530 418,530 468,392 548,690 606,464 646,530 738,530" fill="none" stroke="url(#lg-s)" stroke-width="64" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
       <div>
-        <div class="brand-name">MDW</div>
-        <div class="brand-sub">Move Digital Weight</div>
+        <div class="brand-name">MWM</div>
+        <div class="brand-sub">Move Weight Manager</div>
+        <div class="brand-tag">Health · Repair · Recovery</div>
       </div>
     </div>
+    <div id="switcher"></div>
     <nav id="nav"></nav>
     <div id="activity"></div>
     <div class="side-foot">
@@ -41,5 +42,7 @@
   <script src="app.js"></script>
   <script src="commander.js"></script>
   <script src="toolkit.js"></script>
+  <script src="server.js"></script>
+  <script src="fleet.js"></script>
 </body>
 </html>

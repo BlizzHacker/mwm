@@ -115,7 +115,7 @@ pub fn relaunch_elevated(args: &str) -> anyhow::Result<()> {
 
 #[cfg(not(windows))]
 pub fn relaunch_elevated(_args: &str) -> anyhow::Result<()> {
-    anyhow::bail!("Run MDW with sudo / pkexec for system-wide cleaning.")
+    anyhow::bail!("Run MWM with sudo / pkexec for system-wide cleaning.")
 }
 
 /// Show a file or folder in the system file manager.

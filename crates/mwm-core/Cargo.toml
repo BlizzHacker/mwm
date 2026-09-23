@@ -1,6 +1,6 @@
 [package]
-name = "mdw-core"
-description = "MDW - Move Digital Weight: cross-platform cleaning, uninstall and startup engine"
+name = "mwm-core"
+description = "MWM - Move Weight Manager: cross-platform cleaning, uninstall and startup engine"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,6 +13,7 @@ walkdir.workspace = true
 blake3.workspace = true
 sysinfo.workspace = true
 trash.workspace = true
+ureq = { version = "2", default-features = false, features = ["json"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"

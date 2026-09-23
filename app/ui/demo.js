@@ -1,4 +1,4 @@
-/* Demo backend: lets the MDW UI run in any browser (moveweight.com/mdw/demo)
+/* Demo backend: lets the MWM UI run in any browser (moveweight.com/mwm/demo)
    with realistic sample data. Never loaded logic-wise inside the desktop app,
    where window.__TAURI__ exists and app.js calls the real engine. */
 (function () {
@@ -90,7 +90,7 @@
   ];
 
   const handlers = {
-    system_info: () => ({ os: "Windows 11 Home 25H2 (web demo)", platform: "windows", hostname: "DEMO-PC", elevated: false, version: "0.1.0", memory_total: 16 * GB, memory_used: 11.2 * GB, cpu: "Intel Core i7-1165G7", cores: 8, uptime_secs: 86400 * 3, disks }),
+    system_info: () => ({ os: "Windows 11 Home 25H2 (web demo)", platform: "windows", hostname: "DEMO-PC", elevated: false, version: "0.3.0", memory_total: 16 * GB, memory_used: 11.2 * GB, cpu: "Intel Core i7-1165G7", cores: 8, uptime_secs: 86400 * 3, disks }),
     cleaner_scan: async () => { await wait(900); return scan.map((x) => ({ ...x })); },
     cleaner_clean: async ({ ids }) => {
       await wait(1200);
@@ -112,7 +112,7 @@
         { kind: "regkey", path: `HKCU\\SOFTWARE\\${app.publisher.split(" ")[0]}\\${n}`, bytes: 0 },
       ];
     },
-    leftovers_remove: async ({ items }) => { await wait(700); return { removed: items.map((i) => i.path), failed: [], backup: "C:\\Users\\you\\AppData\\Local\\MDW\\backups" }; },
+    leftovers_remove: async ({ items }) => { await wait(700); return { removed: items.map((i) => i.path), failed: [], backup: "C:\\Users\\you\\AppData\\Local\\MWM\\backups" }; },
     startup_list: async () => { await wait(600); return startup.map((x) => ({ ...x })); },
     startup_set: async ({ id, enabled }) => { startup = startup.map((s) => (s.id === id ? { ...s, enabled } : s)); return { ok: true, message: "Done" }; },
     service_mode: async () => ({ ok: true, message: "Done" }),
@@ -149,7 +149,7 @@
     procs_kill: async ({ pids }) => pids.length,
     reveal: () => null,
     launch_tool: () => { throw "System tools open in the desktop app."; },
-    relaunch_admin: () => { throw "This is the web demo - install MDW to run as administrator."; },
+    relaunch_admin: () => { throw "This is the web demo - install MWM to run as administrator."; },
     shred_paths: async () => ({ files: 0, bytes: 0, failed: [] }),
     wipe_free: async () => "Demo: no disk was touched.",
   };
@@ -164,12 +164,12 @@
     "C:\\Users\\you\\Downloads\\old-installers": [["vlc-3.0.20.exe", 42 * MB], ["discord-setup.exe", 98 * MB]],
     "C:\\Users\\you\\Documents": [["Taxes 2025"], ["Resume.docx", 48 * 1024], ["budget.xlsx", 96 * 1024], ["readme.md", 1300]],
     "C:\\Users\\you\\Documents\\Taxes 2025": [["W2.pdf", 180 * 1024], ["1099.pdf", 90 * 1024]],
-    "C:\\Users\\you\\Desktop": [["MDW.lnk", 1400], ["todo.txt", 512]],
+    "C:\\Users\\you\\Desktop": [["MWM.lnk", 1400], ["todo.txt", 512]],
     "C:\\Users\\you\\Pictures": [["IMG_2041.jpg", 4.2 * MB], ["IMG_2042.jpg", 3.9 * MB], ["screenshot.png", 900 * 1024]],
     "C:\\Windows": [["System32"], ["Temp"], ["explorer.exe", 5 * MB]],
     "C:\\Program Files": [["7-Zip"], ["KeePassXC"], ["VideoLAN"]],
-    "T:\\": [["MDW"], ["Movies"], ["Backups"]],
-    "T:\\MDW": [["0.1.2"], ["README.txt", 900]],
+    "T:\\": [["MWM"], ["Movies"], ["Backups"]],
+    "T:\\MWM": [["0.1.2"], ["README.txt", 900]],
   };
   const kids = (p) => FS[p] || (FS[p] = []);
   const par = (p) => { const t = p.replace(/\\$/, ""); const i = t.lastIndexOf("\\"); return i < 0 ? null : i === 2 ? t.slice(0, 3) : t.slice(0, i); };
@@ -231,7 +231,7 @@
       const x = nm(path).split(".").pop();
       if (["jpg", "png"].includes(x)) return { kind: "image", size: e[1] || 0, truncated: false, content: "data:image/svg+xml;base64," + btoa(demoSvg) };
       if (["exe", "iso", "zip", "pdf", "docx", "xlsx", "sys"].includes(x)) return { kind: "binary", size: e[1] || 0, truncated: true, content: "00000000  4d 5a 90 00 03 00 00 00 04 00 00 00 ff ff 00 00  MZ..............\n00000010  b8 00 00 00 00 00 00 00 40 00 00 00 00 00 00 00  ........@......." };
-      return { kind: "text", size: e[1] || 0, truncated: false, content: `# ${nm(path)}\n\nThis is the MDW web demo - in the desktop app F3 shows the real file.\nText, images and a hex view for binaries.` };
+      return { kind: "text", size: e[1] || 0, truncated: false, content: `# ${nm(path)}\n\nThis is the MWM web demo - in the desktop app F3 shows the real file.\nText, images and a hex view for binaries.` };
     },
     files_props: ({ path }) => { const e = find(path) || [nm(path)]; return { path, is_dir: e[1] === undefined, size: e[1] || 64 * MB, files: 12, dirs: 2, created: now - 86400 * 90, modified: now - 86400 * 3, accessed: now - 600, readonly: false, hidden: !!e[2] }; },
     files_dir_sizes: async ({ paths }) => { await wait(600); return paths.map((p, i) => [p, (i + 1) * 137 * MB]); },
@@ -285,7 +285,45 @@
     },
     toolkit_wifi: async () => { await wait(500); return [{ Name: "HomeNet-5G", Auth: "WPA3-Personal", Key: "demo-password-123" }, { Name: "CoffeeShop", Auth: "Open", Key: "" }]; },
   });
-  window.MDW_DEMO = async (cmd, args) => {
+
+  Object.assign(handlers, {
+    keys_list: async () => { await wait(600); return [
+      { kind: "windows", name: "Windows product key (firmware)", value: "DEMO7-XXXXX-XXXXX-XXXXX-3V66T", source: "BIOS / UEFI (OA3)", note: "Windows 11 Home OEM:DM", secret: true },
+      { kind: "windows", name: "Installed key (Windows 11 Home)", value: "YTMG3-N6DKC-DKB77-7M9GH-8HVX7", source: "Registry (DigitalProductId)", note: "Generic key - this PC is activated by a digital license tied to its hardware / Microsoft account.", secret: true },
+      { kind: "license", name: "Windows(R), Core edition", value: "*****-*****-*****-*****-3V66T", source: "Windows(R) Operating System, OEM_DM channel", note: "Licensed. Only the last 5 characters are stored for this product.", secret: false },
+      { kind: "office", name: "Office 16, Office16O365HomePremR_Subscription1 edition", value: "*****-*****-*****-*****-Q8TXY", source: "Office 16, TIMEBASED_SUB channel", note: "Licensed. Only the last 5 characters are stored for this product.", secret: false },
+      { kind: "bitlocker", name: "BitLocker recovery key C:", value: "123456-654321-111111-222222-333333-444444-555555-666666", source: "Protector {7A1C...}", note: "Keep this somewhere safe - it unlocks the drive if Windows can't.", secret: true },
+      { kind: "wifi", name: "HomeNet-5G", value: "demo-password-123", source: "Wi-Fi (WPA3-Personal)", note: "", secret: true },
+      { kind: "wifi", name: "CoffeeShop", value: "", source: "Wi-Fi (Open)", note: "Open network, or run as administrator to read the key.", secret: false },
+    ]; },
+    server_info: async () => { await wait(900); return {
+      platform: "proxmox", kernel: "6.8.12-43-pve", kernels: ["proxmox-kernel-6.8.12-13-pve", "proxmox-kernel-6.8.12-43-pve"], load: "1.19 1.67 1.93", failed: [],
+      proxmox: { version: "pve-manager/8.4.19 (running kernel: 6.8.12-43-pve)", subscription: "NotFound",
+        guests: [[100, "lxc", "sonarr", "running", 0.01, 412, 6144], [101, "lxc", "jellyfin", "running", 0.12, 814, 32768], [104, "lxc", "romm", "running", 0.03, 2860, 16384], [107, "lxc", "traefik", "running", 0.0, 96, 1024], [126, "lxc", "cleanuparr", "stopped", 0, 0, 1024], [200, "qemu", "windows-11", "running", 0.21, 7900, 8192], [201, "qemu", "home-assistant", "running", 0.02, 1500, 4096]]
+          .map(([vmid, type, name, status, cpu, mem, max]) => ({ vmid, type, name, status, cpu, mem: mem * MB, maxmem: max * MB, uptime: status === "running" ? 86400 * 3.9 : 0, node: "pve1" })),
+        storage: [{ name: "local", type: "dir", status: "active", total: 110 * GB, used: 78 * GB }, { name: "local-lvm", type: "lvmthin", status: "active", total: 4200 * GB, used: 2000 * GB }, { name: "tank", type: "zfspool", status: "active", total: 21800 * GB, used: 14300 * GB }] },
+      unraid: null,
+      zfs: [{ name: "tank", size: 21800 * GB, alloc: 14300 * GB, free: 7500 * GB, frag: "7", cap: "65", health: "ONLINE", scan: "scrub repaired 0B in 05:12:44 with 0 errors on Sun Sep 14 05:36:45 2026", errors: "No known data errors" }],
+      smart: [{ device: "/dev/nvme0", model: "Samsung SSD 980 PRO 1TB", capacity: 1000 * 1000 ** 3, passed: true, temp: 38, hours: 14210, wear: 4, media_errors: 0 },
+        { device: "/dev/sda", model: "WDC WD120EDAZ", capacity: 12 * 1000 ** 4, passed: true, temp: 36, hours: 31022, reallocated: 0, pending: 0, rotation: 5400 },
+        { device: "/dev/sdb", model: "ST8000DM004", capacity: 8 * 1000 ** 4, passed: true, temp: 44, hours: 42980, reallocated: 8, pending: 0, rotation: 5425 }],
+      docker: { containers: [{ name: "portainer", image: "portainer/portainer-ce", state: "running", status: "Up 3 days" }, { name: "watchtower", image: "containrrr/watchtower", state: "exited", status: "Exited (0) 2 days ago" }], df: [{ type: "Images", size: "4.1GB", reclaimable: "1.2GB (29%)" }, { type: "Build Cache", size: "650MB", reclaimable: "650MB" }] },
+    }; },
+    server_action: async ({ action, target }) => `${action} ${target}: done (demo)`,
+  });
+
+  const demoConns = [{ id: "d1", name: "pve1 (Proxmox)", url: "http://192.168.0.6:7777", has_token: true }, { id: "d2", name: "unraid", url: "http://192.168.0.20:7777", has_token: true }];
+  Object.assign(handlers, {
+    conn_list: () => demoConns,
+    conn_save: ({ name, url }) => { const c = { id: "d" + Date.now(), name, url, has_token: true }; demoConns.push(c); return c; },
+    conn_remove: ({ id }) => { const i = demoConns.findIndex((c) => c.id === id); if (i >= 0) demoConns.splice(i, 1); },
+    remote_call: async ({ id, cmd, args }) => {
+      if (id === "d2") throw "can't reach unraid (http://192.168.0.20:7777): ConnectionFailed";
+      const r = await handlers[cmd](args || {});
+      return cmd === "system_info" ? { ...r, hostname: "pve1", os: "Linux (Debian GNU/Linux 12)", platform: "linux", cores: 16, memory_total: 251 * GB, memory_used: 38 * GB } : r;
+    },
+  });
+  window.MWM_DEMO = async (cmd, args) => {
     const h = handlers[cmd];
     if (!h) throw `demo: ${cmd} not available`;
     return h(args);
