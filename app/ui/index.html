@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MDW - Move Digital Weight</title>
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <aside class="side">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 64 64" aria-hidden="true">
+        <rect x="4" y="22" width="8" height="20" rx="2" />
+        <rect x="12" y="16" width="8" height="32" rx="2" />
+        <rect x="20" y="29" width="24" height="6" rx="3" />
+        <rect x="44" y="16" width="8" height="32" rx="2" />
+        <rect x="52" y="22" width="8" height="20" rx="2" />
+      </svg>
+      <div>
+        <div class="brand-name">MDW</div>
+        <div class="brand-sub">Move Digital Weight</div>
+      </div>
+    </div>
+    <nav id="nav"></nav>
+    <div id="activity"></div>
+    <div class="side-foot">
+      <div id="elev" class="elev"></div>
+      <div class="ver" id="ver"></div>
+    </div>
+  </aside>
+  <main>
+    <header class="top">
+      <h1 id="title"></h1>
+      <div class="top-actions" id="top-actions"></div>
+    </header>
+    <section id="page" class="page"></section>
+  </main>
+  <div id="modal" class="modal hidden"><div class="modal-card" id="modal-card"></div></div>
+  <div id="toasts"></div>
+  <script src="demo.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

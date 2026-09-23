@@ -1,0 +1,52 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MDW",
+  "mainBinaryName": "MDW",
+  "version": "0.1.1",
+  "identifier": "com.moveweight.mdw",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "MDW - Move Digital Weight",
+        "width": 1320,
+        "height": 860,
+        "minWidth": 980,
+        "minHeight": 640,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "MoveWeight",
+    "copyright": "© 2026 MoveWeight Foundation. GPL-3.0-or-later.",
+    "category": "Utility",
+    "shortDescription": "MDW - Move Digital Weight: clean junk, uninstall cleanly, tame startup.",
+    "longDescription": "Open-source PC cleaner and uninstaller. Replaces CCleaner and Revo Uninstaller: junk and browser cleaning, uninstall with leftover removal, startup manager, software updates via winget, duplicate finder, disk analyzer and secure delete.",
+    "homepage": "https://moveweight.com/mdw",
+    "license": "GPL-3.0-or-later",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
+      "nsis": {
+        "installMode": "currentUser",
+        "displayLanguageSelector": false
+      }
+    }
+  }
+}

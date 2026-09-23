@@ -1,0 +1,25 @@
+[package]
+name = "mdw-app"
+description = "MDW - Move Digital Weight"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "MDW"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+mdw-core = { path = "../../crates/mdw-core" }
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
