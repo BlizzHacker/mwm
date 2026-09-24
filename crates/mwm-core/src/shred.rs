@@ -1,5 +1,4 @@
-//! Unrecoverable Delete (file shredder) and free-space wiping (Revo's
-//! "Evidence Remover").
+//! Unrecoverable Delete (file shredder) and free-space wiping.
 //!
 //! Overwriting is meaningful on spinning disks. On SSDs wear-levelling means
 //! old blocks may survive; the UI says so and recommends free-space wiping +

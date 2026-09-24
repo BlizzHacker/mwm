@@ -21,6 +21,8 @@ fn relaunch_admin(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 fn main() {
+    // Remote access (this PC's own MWM server) comes back on if it was left on.
+    std::thread::spawn(mwm_core::web::ra_autostart);
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![api, relaunch_admin])

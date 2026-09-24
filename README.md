@@ -3,9 +3,11 @@
 <p align="center"><b>PC health, repair and recovery - for your PC and your servers.</b><br>
 Free and open source. No ads, no "Pro" tier, no telemetry.</p>
 
+<p align="center"><a href="https://manage.moveweight.com/">Website</a> · <a href="https://manage.moveweight.com/app/">Private web manager</a></p>
+
 <p align="center"><img src="docs/screenshots/health.png" width="860" alt="MWM Health Check"></p>
 
-MWM replaces the pile of tools a PC tech carries - **CCleaner, Revo Uninstaller, Double Commander and the
+MWM replaces the pile of tools a PC tech carries - **cleaner, uninstaller, dual-pane file manager and the
 Geek Squad / Hiren's repair kit** - with one ~4 MB app for Windows, and a single static binary that gives
 **Proxmox VE, Unraid and any Linux server** the same power in a browser.
 
@@ -15,7 +17,7 @@ Geek Squad / Hiren's repair kit** - with one ~4 MB app for Windows, and a single
 |---|---|
 | **Health Check** | Junk, startup, outdated apps and disk at a glance; one click cleans only the safe defaults |
 | **Custom Clean** | 40+ rules: Windows temp, recycle bin, thumbnails, crash dumps, WER, Update cache, Store apps, NVIDIA/Discord/VS Code/Steam caches, dev caches, every Chromium browser + Firefox (cache, history, cookies). Linux: apt/dnf cache, journals, rotated logs, /tmp, Proxmox task logs |
-| **Uninstaller** | Runs the real uninstaller (UAC-aware), then hunts leftover folders, shortcuts and registry keys (Revo-style). Leftovers go to the Recycle Bin; registry keys are backed up as `.reg` first. Store apps, dpkg/flatpak/snap on Linux |
+| **Uninstaller** | Runs the real uninstaller (UAC-aware), then hunts leftover folders, shortcuts and registry keys. Leftovers go to the Recycle Bin; registry keys are backed up as `.reg` first. Store apps, dpkg/flatpak/snap on Linux |
 | **Startup Manager** | Startup apps, scheduled tasks, third-party services / systemd units - toggled the Task Manager way, never deleted |
 | **Software Updater** | Free, via winget / apt / brew - updates straight from the publisher |
 | **Commander** | Dual-pane, keyboard-first file manager (Double Commander / Geek Squad FMOD style): F3 view (text/image/hex), F5 copy, F6 move, F7 mkdir, F8 recycle, search by name/content, compare panes, multi-rename, zip pack/unpack, folder sizes, network drives. Copies run as background jobs with progress, cancel and conflict handling |
@@ -26,13 +28,13 @@ Geek Squad / Hiren's repair kit** - with one ~4 MB app for Windows, and a single
 | **Network** | Router → internet → DNS → HTTPS test with a plain-English verdict and one-click fixes |
 | **Crashes & Events** | Blue screens, hard resets, minidumps and a searchable error log |
 | **Server / NAS** | Proxmox cluster guests (start / shut down / reboot on any node), storage, ZFS pools + scrub, SMART for every disk, Docker containers, Unraid array, failed services, kernels |
+| **Service plugins** | Discover Sonarr, Radarr, Lidarr, Prowlarr, RomMarr, Maintainerr and CleanUpArr on the owning Proxmox node. Optional local MCP-ARR bridge exposes the upstream MCP tools in the same desktop/web UI |
 | Also | Duplicate Finder (BLAKE3), Disk Analyzer, Performance (heavy processes), Drivers (inventory - updates only via Windows Update, never third-party mirrors), Shredder + free-space wipe, System Tools launcher |
 
 ## Install
 
 ### Windows 10 / 11
-Download **`MWM_x.y.z_x64-setup.exe`** from [Releases](https://github.com/BlizzHacker/mwm/releases/latest)
-(per-user install, no admin needed) - or the portable `MWM-portable.exe`. Microsoft Store listing coming.
+Windows desktop packaging is in progress. Use only a release that has passed the Windows Defender gate; the current preview was blocked during validation and is not ready for distribution.
 
 ### Proxmox VE / Debian / Ubuntu
 ```sh
@@ -67,7 +69,13 @@ mwm --json <command>     machine-readable output
 - Startup toggles are Task Manager-compatible and reversible. Repairs use only tools the OS ships.
 - `mwm serve` requires a random access token (HttpOnly, SameSite=Strict cookie; JSON-only API, so no CSRF);
   `--read-only` refuses every change. It is plain HTTP - keep it on your LAN or behind a reverse proxy / VPN.
-- Keys never leave the machine. There are no password-cracking tools and there never will be.
+- Local credentials are not sent to the public MWM site. When you connect one MWM agent to another, results you request can traverse that authenticated connection; protect agent tokens and use a trusted network.
+
+## MCP-ARR compatibility
+
+MWM has its own Proxmox service discovery and can also connect to [MCP-ARR](https://github.com/aplaceforallmystuff/mcp-arr). On a Proxmox node that owns Sonarr/Radarr/Lidarr/Prowlarr, run `sudo python3 deploy/arr/install.py` from an MWM checkout to install MCP-ARR on `127.0.0.1:3000/mcp`. The installer reads each running service's API key from its LXC, writes a root-only `/etc/mwm/mcp-arr.env`, and starts the upstream container. Docker administrators can inspect container environment and should be trusted with these keys.
+
+In MWM, choose that node in the machine switcher, open **Plugins**, click **Connect MCP-ARR**, then **Browse tools**. On a Windows PC, the same page can connect to an MCP-ARR instance running locally even without Proxmox. The bridge accepts loopback endpoints only, because MCP-ARR HTTP mode has no documented access control. MWM's native service status view remains usable without MCP-ARR.
 
 ## Build (everything cross-compiles from Linux)
 ```

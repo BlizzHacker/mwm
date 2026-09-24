@@ -41,10 +41,12 @@ pub fn disks() -> Vec<DiskInfo> {
             free: d.available_space(),
             removable: d.is_removable(),
         })
-        .filter(|d| !matches!(d.fs.as_str(), "overlay" | "tmpfs" | "squashfs" | "devtmpfs"))
+        // autofs = systemd automount placeholders; the real mount is listed separately.
+        .filter(|d| !matches!(d.fs.as_str(), "overlay" | "tmpfs" | "squashfs" | "devtmpfs" | "autofs" | "fuse.lxcfs" | "efivarfs"))
         .collect();
     v.sort_by(|a, b| a.mount.cmp(&b.mount));
-    v.dedup_by(|a, b| a.name == b.name && a.total == b.total && !a.name.is_empty());
+    // One entry per mount point (bind mounts / re-mounts show up more than once).
+    v.dedup_by(|a, b| a.mount == b.mount);
     v
 }
 
@@ -188,11 +190,19 @@ pub fn terminal(dir: &str) -> anyhow::Result<()> {
     #[cfg(target_os = "macos")]
     crate::util::cmd("open").args(["-a", "Terminal", dir]).spawn()?;
     #[cfg(all(unix, not(target_os = "macos")))]
-    crate::util::cmd("x-terminal-emulator").current_dir(dir).spawn()?;
+    {
+        // Every desktop ships a different terminal; take the first that exists.
+        let ok = ["x-terminal-emulator", "gnome-terminal", "konsole", "xfce4-terminal", "kitty", "alacritty", "tilix", "xterm"]
+            .iter()
+            .any(|t| crate::util::cmd(t).current_dir(dir).spawn().is_ok());
+        if !ok {
+            anyhow::bail!("no terminal app found (install gnome-terminal, konsole or xterm)");
+        }
+    }
     Ok(())
 }
 
-/// Built-in OS tools (Revo's "Windows Tools" panel).
+/// Built-in OS tools launcher.
 pub fn launch_tool(tool: &str) -> anyhow::Result<()> {
     #[cfg(windows)]
     {

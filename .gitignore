@@ -1,3 +1,6 @@
 target/
 app/src-tauri/gen/
 *.msix
+__pycache__/
+*.pyc
+*.env

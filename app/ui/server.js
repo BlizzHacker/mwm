@@ -74,7 +74,7 @@ VIEWS.server = async function () {
   $("#sv-re").onclick = () => { SRV.info = null; VIEWS.server(); };
   if (!SRV.info) {
     $("#page").innerHTML = loading("Reading guests, pools, disks and containers...");
-    const i = await guard(() => invoke("server_info"));
+    const i = await guard(() => invoke("server_info", { node: SRV.node || "" }));
     if (!i) return;
     SRV.info = i;
     if (current !== "server") return;
@@ -132,3 +132,153 @@ function drawServer() {
         ${arr(dk.df).length ? `<div class="row" style="padding:10px 14px;flex-wrap:wrap">${arr(dk.df).map((d) => `<span class="pill">${esc(d.type)}: ${esc(d.size)} (reclaimable ${esc(d.reclaimable)})</span>`).join("")}</div>` : ""}</div>` : ""}`;
   $$("[data-srv]").forEach((b) => (b.onclick = (e) => { e.preventDefault(); const [a, t, l] = b.dataset.srv.split("|"); srvAction(a, t, l); }));
 }
+
+// --------------------------------------------- Docker inside LXC guests ----
+// Pick a container on the Server page and see / clean the Docker inside it.
+// Volumes are never touched - that's where container data lives.
+SRV.dockerScan = null;
+SRV.dockerJob = null;
+
+async function dockerPanel(node, vmid, name) {
+  modal(loading(`Reading Docker inside CT ${vmid} ${name}...`));
+  $("#modal-card").classList.add("wide");
+  const d = await guard(() => invoke("guest_docker", { node, vmid: String(vmid) }));
+  if (!d) return closeModal();
+  if (!d.available) {
+    modal(`<h2>CT ${esc(vmid)} ${esc(name)}</h2><p class="muted">Docker isn't installed in this container.</p><div class="row" style="justify-content:flex-end"><button class="btn primary" data-close>Close</button></div>`);
+    return;
+  }
+  const cs = arr(d.containers);
+  const stopped = cs.filter((c) => c.state !== "running").length;
+  modal(`<div class="spread"><h2 style="margin:0">Docker in CT ${esc(vmid)} · ${esc(name)}</h2><span class="muted">${esc(node)}</span></div>
+    <div class="row" style="flex-wrap:wrap;margin:12px 0">${arr(d.df).map((x) => `<span class="pill">${esc(x.type)}: ${esc(x.size)} · reclaimable ${esc(x.reclaimable)}</span>`).join("")}
+      <span class="pill ${d.dangling_images ? "medium" : ""}">${d.dangling_images} dangling image(s)</span></div>
+    <div class="scroll" style="max-height:42vh"><table class="table"><thead><tr><th>Container</th><th>State</th><th>Status</th><th class="num">Size</th><th></th></tr></thead><tbody>
+    ${cs.map((c) => `<tr><td class="cell-main">${esc(c.name)}<div class="cell-sub mono">${esc(c.image)}</div></td><td>${statePill(c.state)}</td><td class="muted">${esc(c.status)}</td><td class="num muted">${esc(c.size || "")}</td>
+      <td style="white-space:nowrap;text-align:right">${c.state === "running"
+        ? `<button class="btn small" data-dk="restart|${esc(c.name)}">Restart</button> <button class="btn small danger" data-dk="stop|${esc(c.name)}">Stop</button>`
+        : `<button class="btn small primary" data-dk="start|${esc(c.name)}">Start</button> <button class="btn small danger" data-dk="remove|${esc(c.name)}">Remove</button>`}</td></tr>`).join("") || '<tr><td colspan="5" class="muted">No containers.</td></tr>'}
+    </tbody></table></div>
+    <div class="label" style="margin:16px 0 8px">Clean up</div>
+    <div class="row" style="flex-wrap:wrap">
+      <button class="btn primary" data-dk="cleanup|">Safe cleanup</button>
+      <button class="btn" data-dk="prune_containers|">Remove ${stopped} stopped container(s)</button>
+      <button class="btn" data-dk="prune_images|">Remove dangling images</button>
+      <button class="btn" data-dk="prune_builder|">Clear build cache</button>
+      <button class="btn danger" data-dk="prune_images_unused|">Remove ALL unused images</button>
+    </div>
+    <div class="cell-sub" style="margin-top:8px">Safe cleanup = stopped containers + dangling images + build cache + unused networks. Volumes (your container data) are never removed.</div>
+    <div id="dk-msg" style="margin-top:10px"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-close>Close</button></div>`);
+  $("#modal-card").classList.add("wide");
+  $$("[data-dk]").forEach((b) => (b.onclick = async () => {
+    const [action, target] = b.dataset.dk.split("|");
+    const risky = { remove: `Remove container ${target}? Its volumes stay.`, prune_containers: `Remove ${stopped} stopped container(s)?`, prune_images_unused: "Remove every image no container uses? They'll be re-downloaded if needed later.", cleanup: "Run the safe cleanup?", stop: `Stop ${target}?` }[action];
+    if (risky && !(await choose("Are you sure?", `<p class="muted">${esc(risky)}</p>`, [["go", "Yes, do it", action.startsWith("prune_images_unused") || action === "remove" ? "danger" : "primary"]]))) return dockerPanel(node, vmid, name);
+    if (risky) modal(loading("Working inside the container..."));
+    else $("#dk-msg").innerHTML = '<span class="spin sm"></span> Working...';
+    const r = await guard(() => invoke("guest_docker_action", { node, vmid: String(vmid), action, target }));
+    if (r !== undefined) { toast(String(r).slice(0, 220) || "Done"); SRV.dockerScan = null; dockerPanel(node, vmid, name); }
+    else $("#dk-msg").innerHTML = "";
+  }));
+}
+
+function drawDockerScan() {
+  const box = $("#dk-scan");
+  if (!box) return;
+  const j = SRV.dockerJob && JOBS.list.find((x) => x.id === SRV.dockerJob);
+  const rows = (j ? j.output : SRV.dockerScan || []).map((l) => { try { return typeof l === "string" ? JSON.parse(l) : l; } catch { return null; } }).filter(Boolean);
+  if (j && j.state !== "running") SRV.dockerScan = rows;
+  const reclaim = (df) => df.split(";").map((x) => x.split("|")).filter((x) => x.length === 3).map((x) => `${x[0]}: ${x[2]}`).join(" · ");
+  box.innerHTML = `${j && j.state === "running" ? `<div class="muted" style="margin-bottom:8px"><span class="spin sm"></span> Checking ${esc(j.current)} (${j.done_items}/${j.total_items})</div>` : ""}
+    ${rows.length ? `<div class="card" style="padding:0"><table class="table"><thead><tr><th>LXC</th><th>Node</th><th class="num">Containers</th><th>Reclaimable</th><th></th></tr></thead><tbody>
+    ${rows.map((r) => `<tr><td class="cell-main">${esc(r.vmid)} ${esc(r.name)}</td><td class="muted">${esc(r.node)}</td><td class="num">${esc(r.running)} running / ${esc(r.total)}</td><td class="muted" style="font-size:12.5px">${esc(reclaim(r.df))}</td>
+      <td style="text-align:right"><button class="btn small primary" data-dkopen="${esc(r.node)}|${esc(r.vmid)}|${esc(r.name)}">Open</button></td></tr>`).join("")}</tbody></table></div>`
+      : j && j.state === "running" ? "" : SRV.dockerScan ? '<div class="muted">No running LXC has Docker.</div>' : ""}`;
+  $$("[data-dkopen]").forEach((b) => (b.onclick = () => { const [n, v, nm] = b.dataset.dkopen.split("|"); dockerPanel(n, v, nm); }));
+}
+document.addEventListener("mdw-jobs", () => { if (current === "server") drawDockerScan(); });
+
+// Hook into the Server page: Docker buttons on LXC rows + the cluster scan.
+const _drawServer = drawServer;
+drawServer = function () {
+  _drawServer();
+  const pve = SRV.info?.proxmox;
+  if (!pve) return;
+  const label = [...$$("#page .label")].find((l) => l.textContent.startsWith("Proxmox guests"));
+  if (label) label.insertAdjacentHTML("beforebegin", `<div class="spread" style="margin:18px 0 8px"><div class="label">Docker in your LXCs</div><button class="btn small primary" id="dk-scan-go">Find Docker in all LXCs</button></div><div id="dk-scan"></div>`);
+  $("#dk-scan-go") && ($("#dk-scan-go").onclick = async () => {
+    const id = await guard(() => invoke("docker_scan_cluster"));
+    if (!id) return;
+    SRV.dockerJob = id;
+    watchJob(id, () => drawDockerScan(), true);
+    drawDockerScan();
+  });
+  drawDockerScan();
+  // A Docker button on every running container row.
+  $$("#page [data-srv^='guest_reboot|']").forEach((b) => {
+    const [, t] = b.dataset.srv.split("|");
+    const [node, type, vmid] = t.split("/");
+    if (type !== "lxc") return;
+    const name = arr(pve.guests).find((g) => String(g.vmid) === vmid)?.name || "";
+    b.insertAdjacentHTML("beforebegin", `<button class="btn small" data-dkct="${esc(node)}|${esc(vmid)}|${esc(name)}">Docker</button> `);
+  });
+  $$("[data-dkct]").forEach((b) => (b.onclick = () => { const [n, v, nm] = b.dataset.dkct.split("|"); dockerPanel(n, v, nm); }));
+};
+
+
+// ------------------------------------------- all Proxmox nodes + mounts ----
+SRV.node = "";
+SRV.nodes = null;
+
+async function deployTo(node) {
+  const ok = await choose(`Install MWM on ${esc(node)}?`, `<p class="muted">Copies MWM to <b>${esc(node)}</b>, starts its web server on port 7777 (with its own access token) and adds it to your Machines - then Commander, cleanup and repairs work on that node too.</p>`, [["go", "Install", "primary"]]);
+  if (!ok) return;
+  modal(loading(`Installing MWM on ${node}...`));
+  const r = await guard(() => invoke("deploy_node", { node }));
+  closeModal();
+  if (!r) return;
+  if (!WEB || TAURI) {
+    await guard(() => localInvoke("conn_save", { id: null, name: `${node} (Proxmox)`, url: r.link, token: "" }));
+    if (typeof renderSwitcher === "function") renderSwitcher();
+    toast(`MWM is running on ${node} and was added to Machines.`);
+  } else {
+    modal(`<h2>MWM is running on ${esc(node)}</h2><p class="muted">Add it on your desktop MWM (Machines → Add machine) with this link:</p><div class="mono keyval">${esc(r.link)}</div><div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn" id="dp-copy">Copy</button><button class="btn primary" data-close>Done</button></div>`);
+    $("#dp-copy").onclick = () => copyText(r.link);
+  }
+}
+
+const _drawServer2 = drawServer;
+drawServer = function () {
+  _drawServer2();
+  const i = SRV.info;
+  if (i.nodes) SRV.nodes = i.nodes;
+  const page = $("#page");
+  const nodes = arr(SRV.nodes);
+  const pctOf = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+  const head = nodes.length ? `<div class="label" style="margin-bottom:8px">Proxmox cluster · click a node to inspect it</div>
+    <div class="grid g3" style="margin-bottom:14px">${nodes.map((n) => {
+      const on = (SRV.node || nodes.find((x) => x.local)?.node) === n.node;
+      return `<div class="card mcard" data-node="${esc(n.local ? "" : n.node)}" style="cursor:pointer;${on ? "border-color:var(--accent)" : ""}">
+        <div class="spread"><b>${esc(n.node)}</b>${statePill(n.status === "online" ? "online" : "offline")}</div>
+        <div class="muted mono" style="font-size:12px">${esc(n.ip || "")}${n.local ? " · this node" : ""}</div>
+        <div class="grid g3" style="gap:8px;margin-top:8px"><div><div class="label">CPU</div><div class="v">${Math.round((n.cpu || 0) * 100)}%</div></div><div><div class="label">RAM</div><div class="v">${pctOf(n.mem, n.maxmem)}%</div></div><div><div class="label">Up</div><div class="v">${upt(n.uptime)}</div></div></div>
+        <div class="row" style="margin-top:10px"><button class="btn small" data-deploy="${esc(n.node)}">Deploy MWM</button></div></div>`;
+    }).join("")}</div>` : "";
+  const mounts = arr(i.mounts);
+  const mountsHtml = mounts.length ? `<div class="label" style="margin:18px 0 8px">Disks &amp; mounts on ${esc(i.node || "this machine")}</div>
+    <div class="card" style="padding:0"><table class="table"><tbody>${mounts.map((m) => { const p = pctOf(m.used, m.total); return `<tr><td class="cell-main mono">${esc(m.mount)}<div class="cell-sub">${esc(m.source)} · ${esc(m.fs)}</div></td>
+      <td style="width:40%"><div class="bar ${p > 93 ? "full" : ""}"><i style="width:${p}%"></i></div></td><td class="num">${bytes(m.free)} free of ${bytes(m.total)}</td><td class="num ${p > 93 ? "danger-t" : "muted"}">${p}%</td></tr>`; }).join("")}</tbody></table></div>` : "";
+  page.insertAdjacentHTML("afterbegin", head);
+  // Mounts go right after the four summary cards.
+  const firstGrid = page.querySelector(".grid.g4");
+  if (firstGrid) firstGrid.insertAdjacentHTML("afterend", mountsHtml);
+  $$("[data-node]").forEach((c) => (c.onclick = (e) => {
+    if (e.target.closest("[data-deploy]")) return;
+    SRV.node = c.dataset.node;
+    SRV.info = null;
+    SRV.dockerScan = null;
+    VIEWS.server();
+  }));
+  $$("[data-deploy]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); deployTo(b.dataset.deploy); }));
+};

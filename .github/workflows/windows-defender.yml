@@ -1,0 +1,42 @@
+name: Windows Defender release gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  defender:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build Windows desktop executable
+        run: cargo build --release -p mwm-app
+      - name: Scan build with Microsoft Defender
+        shell: pwsh
+        run: |
+          $candidate = Join-Path $env:GITHUB_WORKSPACE 'target\release\MoveWeightManager.exe'
+          if (-not (Test-Path -LiteralPath $candidate)) {
+            Get-ChildItem target\release -Filter *.exe | Select-Object -ExpandProperty Name
+            throw 'Desktop executable was not produced'
+          }
+          $status = Get-MpComputerStatus
+          if (-not $status.AMServiceEnabled -or -not $status.AntivirusEnabled) {
+            throw 'Microsoft Defender is unavailable on this runner; this gate cannot certify the build'
+          }
+          Start-MpScan -ScanType CustomScan -ScanPath $candidate
+          if (-not (Test-Path -LiteralPath $candidate)) {
+            throw 'Microsoft Defender blocked or quarantined the desktop executable'
+          }
+          $hits = @(Get-MpThreatDetection | Where-Object {
+            @($_.Resources) | Where-Object { $_ -like "*$candidate*" }
+          })
+          if ($hits.Count -gt 0) {
+            $hits | Select-Object ThreatID, InitialDetectionTime, ActionSuccess | Format-Table
+            throw 'Microsoft Defender detected the desktop executable'
+          }
+          Write-Output 'Microsoft Defender scan passed'

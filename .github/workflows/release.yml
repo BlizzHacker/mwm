@@ -1,0 +1,58 @@
+# Builds every desktop platform on its native OS and attaches the results to
+# the GitHub release for a pushed tag (vX.Y.Z). macOS can only be built on a Mac.
+name: release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            args: --target universal-apple-darwin --bundles app,dmg
+            rust_targets: aarch64-apple-darwin,x86_64-apple-darwin
+          # Oldest supported Ubuntu = AppImage / .deb that run on most distros.
+          - os: ubuntu-22.04
+            args: --bundles appimage,deb
+            rust_targets: ""
+          - os: windows-latest
+            args: --bundles nsis,msi
+            rust_targets: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_targets }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Linux build deps
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev patchelf
+      - run: cargo install tauri-cli --version "^2" --locked
+      - name: Build desktop app
+        working-directory: app/src-tauri
+        run: cargo tauri build ${{ matrix.args }}
+      - name: macOS command-line tool (universal)
+        if: startsWith(matrix.os, 'macos')
+        run: |
+          cargo build --release -p mwm-cli --target aarch64-apple-darwin
+          cargo build --release -p mwm-cli --target x86_64-apple-darwin
+          lipo -create -output mwm-macos-universal target/aarch64-apple-darwin/release/mwm target/x86_64-apple-darwin/release/mwm
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            target/**/bundle/dmg/*.dmg
+            target/**/bundle/appimage/*.AppImage
+            target/**/bundle/deb/*.deb
+            target/**/bundle/msi/*.msi
+            mwm-macos-universal

@@ -1,7 +1,8 @@
 # Microsoft Store submission kit - MWM - Move Weight Manager
 
-Everything Partner Center asks for, ready to paste. Seller: **MOVEWEIGHT**
-(`CN=6375D74B-5E4F-45B4-B246-B29507C1332A`).
+Draft listing and packaging notes. **Do not upload this build yet:** Microsoft Defender detected the current Windows preview as `HackTool:Win32/Mimikatz.NPTT`. The signature/source cause has not been confirmed, and the Partner Center package identity below has not been verified against the account. The Windows Defender release gate must pass on the exact package candidate before submission.
+
+Expected seller: **MOVEWEIGHT** (`CN=6375D74B-5E4F-45B4-B246-B29507C1332A`); verify in Partner Center.
 
 ## 1. Reserve the name (you, in Partner Center)
 Apps and games → New product → **MSIX or PWA app** → reserve **"MWM - Move Weight Manager"**

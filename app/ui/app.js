@@ -45,7 +45,7 @@ const localInvoke = (cmd, args = {}) =>
   : TAURI.core.invoke("api", { cmd, args });
 // Which machine the UI is driving: "" = this one, otherwise a saved connection id.
 let TARGET = (() => { try { return localStorage.getItem("mwm.target") || ""; } catch { return ""; } })();
-const LOCAL_ONLY = new Set(["relaunch_admin", "open_default", "edit_file", "terminal", "reveal", "launch_tool", "conn_list", "conn_save", "conn_remove", "remote_call"]);
+const LOCAL_ONLY = new Set(["remote_access_status", "remote_access_start", "remote_access_stop", "remote_access_new_token", "relaunch_admin", "open_default", "edit_file", "terminal", "reveal", "launch_tool", "conn_list", "conn_save", "conn_remove", "remote_call"]);
 const invoke = (cmd, args = {}) =>
   TARGET && !LOCAL_ONLY.has(cmd) ? localInvoke("remote_call", { id: TARGET, cmd, args }) : localInvoke(cmd, args);
 
@@ -170,9 +170,11 @@ const PAGES = [
   { id: "keys", label: "Keys & Licenses", icon: "key" },
   { id: "repair", label: "Repair", icon: "wrench" },
   { id: "security", label: "Security", icon: "shield" },
+  { id: "lab", label: "Malware Lab", icon: "shield" },
   { id: "network", label: "Network", icon: "net" },
   { id: "events", label: "Crashes & Events", icon: "alert" },
   { id: "server", label: "Server / NAS", icon: "server" },
+  { id: "plugins", label: "Service Plugins", icon: "server" },
   { sec: "Privacy & tools" },
   { id: "privacy", label: "Shredder & Wipe", icon: "shred" },
   { id: "tools", label: "System Tools", icon: "tools" },
@@ -497,7 +499,7 @@ function drawApps() {
 
 function uninstallFlow(app) {
   modal(`<h2>Uninstall ${esc(app.name)}?</h2>
-    <p class="muted">MWM runs the program's own uninstaller first, then hunts for leftover folders, shortcuts and registry keys - like Revo's moderate mode.</p>
+    <p class="muted">MWM runs the program's own uninstaller first, then hunts for leftover folders, shortcuts and registry keys.</p>
     <div class="note">Nothing is lost for good: leftovers go to the Recycle Bin and registry keys are backed up as <span class="mono">.reg</span> files before removal.</div>
     <div class="row" style="justify-content:flex-end;margin-top:18px"><button class="btn" data-close>Cancel</button><button class="btn primary" id="un-go">Uninstall</button></div>`);
   $("#un-go").onclick = async () => {
@@ -877,7 +879,7 @@ VIEWS.about = function () {
   const i = S.info || {};
   $("#page").innerHTML = `<div class="grid g2">
     <div class="card stack"><div class="row"><svg class="logo" viewBox="0 0 1024 1024" style="width:64px;height:64px">${$(".logo").innerHTML}</svg><div><div class="big">MWM</div><div class="muted">Move Weight Manager - v${esc(i.version || "")}</div></div></div>
-      <div>Free and open source. No ads, no "Pro" upsell, no telemetry. MWM replaces CCleaner and Revo Uninstaller with one lightweight app.</div>
+      <div>Free and open source. No ads, no "Pro" upsell, no telemetry. One lightweight app for cleaning, uninstalling, repair and recovery.</div>
       <div class="muted">License: GPL-3.0-or-later - Made by the MoveWeight Foundation.</div>
       <div class="row">${i.elevated ? '<span class="pill low">Running as administrator</span>' : '<button class="btn" data-admin>Restart as administrator</button>'}</div></div>
     <div class="card"><div class="label" style="margin-bottom:8px">This machine</div>
@@ -888,6 +890,7 @@ VIEWS.about = function () {
         <tr><td class="muted">Memory</td><td>${bytes(i.memory_used)} used of ${bytes(i.memory_total)}</td></tr>
         <tr><td class="muted">Up since</td><td>${i.uptime_secs ? new Date(Date.now() - i.uptime_secs * 1000).toLocaleString() : ""}</td></tr>
       </tbody></table></div>
+    ${WEB || TARGET ? "" : `<div class="card" style="grid-column:1/-1" id="ra-card"><div class="label">Remote access</div><div class="muted" style="margin-top:6px">Loading...</div></div>`}
     <div class="card" style="grid-column:1/-1"><div class="label" style="margin-bottom:8px">How MWM keeps you safe</div>
       <ul class="muted" style="margin:0;padding-left:18px;line-height:1.8">
         <li>Scans never delete anything. Cleaning only touches caches and temp files, and skips anything in use.</li>
@@ -895,10 +898,42 @@ VIEWS.about = function () {
         <li>Startup items are switched off the same way Task Manager does it - never deleted.</li>
         <li>Updates come from winget (the publisher's own installers); drivers only from Windows Update or the maker.</li>
       </ul></div></div>`;
+  drawRemoteAccess();
 };
 
+// ------------------------------------------------------ remote access ----
+async function drawRemoteAccess() {
+  const box = $("#ra-card");
+  if (!box) return;
+  const st = await localInvoke("remote_access_status").catch((e) => ({ error: String(e) }));
+  if (st.error) { box.innerHTML = `<div class="label">Remote access</div><div class="danger-t">${esc(st.error)}</div>`; return; }
+  box.innerHTML = `<div class="spread"><div><div class="label">Remote access</div><h3 style="margin:6px 0 2px">Manage this ${S.info?.platform === "windows" ? "PC" : "machine"} from another MWM or a browser</h3>
+      <div class="muted">Runs MWM's secure web server here. Anyone with the access token can manage this machine - share it only with yourself.</div></div>
+      <button class="toggle ${st.running ? "on" : ""}" id="ra-toggle" title="${st.running ? "On" : "Off"}"></button></div>
+    <div class="row" style="margin-top:12px;flex-wrap:wrap">
+      <label class="muted">Listen on <input class="search mono" id="ra-bind" style="min-width:170px" value="${esc(st.bind)}" ${st.running ? "disabled" : ""}></label>
+      <label class="row muted" style="gap:6px"><input type="checkbox" class="cb" id="ra-ro" ${st.read_only ? "checked" : ""} ${st.running ? "disabled" : ""}>Read-only (look, don't touch)</label></div>
+    ${st.running ? `<div class="note" style="margin-top:12px">On another MWM: <b>Machines → Add machine</b>, paste this link:<div class="row" style="margin-top:8px"><span class="mono keyval" style="flex:1">${esc(st.link.replace(/token=.*/, "token=" + "•".repeat(12)))}</span>
+      <button class="btn small" id="ra-copy">Copy link</button><button class="btn small ghost" id="ra-new">New token</button></div>
+      <div class="cell-sub" style="margin-top:6px">Plain HTTP - fine on your home network; use a VPN (Tailscale, WireGuard) to reach it from outside.${S.info?.platform === "windows" ? " Windows may ask to allow MWM through the firewall - allow it on Private networks." : ""}</div></div>` : ""}`;
+  $("#ra-toggle").onclick = async () => {
+    const r = st.running ? await guard(() => localInvoke("remote_access_stop")) : await guard(() => localInvoke("remote_access_start", { bind: $("#ra-bind").value.trim(), readOnly: $("#ra-ro").checked }));
+    if (r) toast(r.running ? "Remote access is on." : "Remote access is off.");
+    drawRemoteAccess();
+  };
+  if (st.running) {
+    $("#ra-copy").onclick = () => copyText(st.link);
+    $("#ra-new").onclick = async () => {
+      if (!(await choose("New access token?", '<p class="muted">Every MWM that uses the old token loses access until you give it the new link.</p>', [["go", "Make a new token", "primary"]]))) return;
+      await localInvoke("remote_access_new_token");
+      toast("New token made.");
+      drawRemoteAccess();
+    };
+  }
+}
+
 // ============================================================== boot ====
-(async function boot() {
+document.addEventListener("DOMContentLoaded", async function boot() {
   renderNav();
   try {
     S.info = await invoke("system_info");
@@ -912,4 +947,4 @@ VIEWS.about = function () {
   $("#elev").innerHTML = `<span class="dot"></span>${S.info.elevated ? "Administrator" : `Standard user - <a href="#" data-admin>elevate</a>`}`;
   $("#ver").textContent = `v${S.info.version || ""}${DEMO ? " - web demo" : ""} - ${S.info.hostname || ""}`;
   go("health");
-})();
+});

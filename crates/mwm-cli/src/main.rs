@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use mwm_core::{apps, cleaner, disk, drivers, dupes, jobs, keys, procs, server, shred, startup, sys, toolkit, updater};
 
-mod serve;
 
 #[derive(Parser)]
 #[command(name = "mwm", version, about = "MWM - Move Weight Manager: clean junk, uninstall cleanly, tame startup.")]
@@ -326,10 +325,10 @@ fn main() -> anyhow::Result<()> {
         }
         Cmd::Serve { bind, read_only, new_token, show_token } => {
             if show_token {
-                println!("{}", serve::token(new_token));
+                println!("{}", mwm_core::web::token(new_token));
                 return Ok(());
             }
-            serve::run(&bind, read_only, new_token)?;
+            mwm_core::web::run(&bind, read_only, new_token)?;
         }
         Cmd::Keys => {
             let k = keys::list();

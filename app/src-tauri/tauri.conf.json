@@ -26,13 +26,13 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
+    "targets": "all",
     "publisher": "MoveWeight",
-    "copyright": "© 2026 MoveWeight Foundation. GPL-3.0-or-later.",
+    "copyright": "\u00a9 2026 MoveWeight Foundation. GPL-3.0-or-later.",
     "category": "Utility",
     "shortDescription": "MWM - Move Weight Manager: clean junk, uninstall cleanly, tame startup.",
-    "longDescription": "Open-source PC cleaner and uninstaller. Replaces CCleaner and Revo Uninstaller: junk and browser cleaning, uninstall with leftover removal, startup manager, software updates via winget, duplicate finder, disk analyzer and secure delete.",
-    "homepage": "https://moveweight.com/mwm",
+    "longDescription": "Open-source PC health, repair and recovery toolkit: junk and browser cleaning, uninstall with leftover removal, startup manager, software updates via winget, duplicate finder, disk analyzer and secure delete.",
+    "homepage": "https://manage.moveweight.com/",
     "license": "GPL-3.0-or-later",
     "icon": [
       "icons/32x32.png",
@@ -42,11 +42,29 @@
       "icons/icon.png"
     ],
     "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
       "nsis": {
         "installMode": "currentUser",
         "displayLanguageSelector": false
       }
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0"
+        ],
+        "section": "admin"
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0"
     }
   }
 }
