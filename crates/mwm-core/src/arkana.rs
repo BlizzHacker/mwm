@@ -193,11 +193,15 @@ pub fn install(repo: &str, dir: &str, lan: bool) -> u64 {
             use std::os::unix::fs::PermissionsExt;
             std::fs::set_permissions(dir.join(".env"), std::fs::Permissions::from_mode(0o600))?;
         }
+        // Upstream's healthcheck sends an unauthenticated GET to /mcp. That
+        // endpoint correctly rejects it with 401, marking a working service
+        // unhealthy. Check the local listener instead; MCP initialize below
+        // still verifies API behavior and the key before the job succeeds.
+        let mut override_yaml = "services:\n  arkana-http:\n    healthcheck:\n      test: [\"CMD\", \"python\", \"-c\", \"import socket; socket.create_connection(('127.0.0.1', 8082), 3).close()\"]\n".to_string();
         if lan {
-            std::fs::write(dir.join("docker-compose.override.yml"), "services:\n  arkana-http:\n    ports: !override\n      - \"0.0.0.0:8082:8082\"\n")?;
-        } else {
-            let _ = std::fs::remove_file(dir.join("docker-compose.override.yml"));
+            override_yaml.push_str("    ports: !override\n      - \"0.0.0.0:8082:8082\"\n");
         }
+        std::fs::write(dir.join("docker-compose.override.yml"), override_yaml)?;
         job.line("Building the Arkana image - the first build takes 10-30 minutes...");
         let mut c = util::cmd("docker");
         c.current_dir(&dir).args(["compose", "build", "arkana-http"]);

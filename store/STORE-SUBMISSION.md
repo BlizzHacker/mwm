@@ -1,22 +1,20 @@
 # Microsoft Store submission kit - MWM - Move Weight Manager
 
-Draft listing and packaging notes. **Do not upload this build yet:** Microsoft Defender detected the current Windows preview as `HackTool:Win32/Mimikatz.NPTT`. The signature/source cause has not been confirmed, and the Partner Center package identity below has not been verified against the account. The Windows Defender release gate must pass on the exact package candidate before submission.
+Draft listing and packaging notes. **Do not upload this build yet:** Microsoft Defender detected the current Windows preview as `HackTool:Win32/Mimikatz.NPTT`. The signature/source cause has not been confirmed. The Windows Defender release gate must pass on the exact package candidate before submission.
 
-Expected seller: **MOVEWEIGHT** (`CN=6375D74B-5E4F-45B4-B246-B29507C1332A`); verify in Partner Center.
+Partner Center product: **MWM - Move Weight Manager**, Store ID `9NQNXS66M029`. Verified package identity on 2026-09-24: `MOVEWEIGHT.MWM-MoveWeightManager`, publisher `CN=6375D74B-5E4F-45B4-B246-B29507C1332A`, display name `MOVE WEIGHT`.
 
-## 1. Reserve the name (you, in Partner Center)
-Apps and games → New product → **MSIX or PWA app** → reserve **"MWM - Move Weight Manager"**
-(fallbacks: "Move Weight Manager", "MWM PC Doctor").
-Then *Product management → Product identity* and check:
+## 1. Reserved identity
+The name has been reserved as an **MSIX or PWA app**. *Product management → Product identity* shows:
 
 | Field | Value in `packaging/msix/AppxManifest.xml` |
 |---|---|
-| Package/Identity/Name | `MOVEWEIGHT.MoveWeightManager` |
+| Package/Identity/Name | `MOVEWEIGHT.MWM-MoveWeightManager` |
 | Package/Identity/Publisher | `CN=6375D74B-5E4F-45B4-B246-B29507C1332A` |
-| Package/Properties/PublisherDisplayName | `MOVEWEIGHT` |
+| Package/Properties/PublisherDisplayName | `MOVE WEIGHT` |
 
-If Partner Center shows a different Identity Name, change it in the manifest and rebuild:
-`packaging/msix/build-msix.ps1 -Exe <MWM-portable.exe> -Icons <icons dir> -Version <x.y.z>`.
+Build after the Defender gate passes:
+`packaging/msix/build-msix.ps1 -Exe <MoveWeightManager.exe> -Version <x.y.z>`.
 
 ## 2. Package
 Upload **`MWM_<version>_x64.msix`** (unsigned - the Store signs it). Target: Windows 10 1809+ desktop, x64.

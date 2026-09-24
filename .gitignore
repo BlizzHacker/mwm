@@ -1,4 +1,5 @@
 target/
+dist/
 app/src-tauri/gen/
 *.msix
 __pycache__/

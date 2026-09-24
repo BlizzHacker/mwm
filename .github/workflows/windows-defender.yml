@@ -40,3 +40,11 @@ jobs:
             throw 'Microsoft Defender detected the desktop executable'
           }
           Write-Output 'Microsoft Defender scan passed'
+      - name: Build Store MSIX after clean scan
+        shell: pwsh
+        run: .\packaging\msix\build-msix.ps1 -Exe "$env:GITHUB_WORKSPACE\target\release\MoveWeightManager.exe" -Version "0.3.0"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mwm-store-candidate
+          path: dist/msix/0.3.0/MWM_0.3.0_x64.msix
+          if-no-files-found: error

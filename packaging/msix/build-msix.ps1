@@ -1,18 +1,22 @@
-# Build the Store MSIX from a release MWM.exe. Everything stays on the output
-# drive (default T:\MWM) - nothing is staged on C:.
-#   .\build-msix.ps1 -Exe T:\MWM\0.1.0\MWM-portable.exe -Icons T:\MWM\icons -Version 0.1.0
+# Build a Store MSIX from a Defender-cleared release executable.
+#   .\build-msix.ps1 -Exe <path-to-MoveWeightManager.exe> -Version 0.3.0
 param(
   [Parameter(Mandatory)] [string]$Exe,
-  [Parameter(Mandatory)] [string]$Icons,
-  [string]$Version = "0.1.0",
-  [string]$Out = "T:\MWM\$Version"
+  [string]$Icons = "",
+  [string]$Version = "0.3.0",
+  [string]$Out = ""
 )
 $ErrorActionPreference = "Stop"
+$repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+if (-not $Icons) { $Icons = Join-Path $repo "app\src-tauri\icons" }
+if (-not $Out) { $Out = Join-Path $repo "dist\msix\$Version" }
+if (-not (Test-Path -LiteralPath $Exe -PathType Leaf)) { throw "Executable not found: $Exe" }
+if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Version must be major.minor.patch" }
 $makeappx = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\makeappx.exe" | Sort-Object FullName | Select-Object -Last 1
 if (-not $makeappx) { throw "Windows SDK makeappx.exe not found" }
 
-$layout = Join-Path $Out "msix-layout"
-Remove-Item $layout -Recurse -Force -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $Out | Out-Null
+$layout = Join-Path $Out ("msix-layout-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force "$layout\Assets" | Out-Null
 Copy-Item $Exe "$layout\MoveWeightManager.exe"
 foreach ($a in "StoreLogo", "Square44x44Logo", "Square150x150Logo", "Square310x310Logo") {
