@@ -34,7 +34,7 @@ Geek Squad / Hiren's repair kit** - with one ~4 MB app for Windows, and a single
 ## Install
 
 ### Windows 10 / 11
-Windows desktop packaging is in progress. Use only a release that has passed the Windows Defender gate; the current preview was blocked during validation and is not ready for distribution.
+Windows desktop packaging is in progress. The earlier preview triggered Microsoft Defender on the publisher's PC. The replacement MSIX and executable passed local Defender scans, but native WebView2 verification and Store certification are still pending. Use only a published release; no Windows release is available yet.
 
 ### Proxmox VE / Debian / Ubuntu
 ```sh
@@ -90,7 +90,7 @@ Layout: `crates/mwm-core` (engine + one command table `api.rs`), `crates/mwm-cli
 `app/src-tauri` (desktop shell), `app/ui` (plain HTML/JS UI shared by desktop, web and demo).
 
 ## Roadmap
-1. **Windows** - desktop app, installer, MSIX for the Microsoft Store. *Shipping.*
+1. **Windows** - desktop app, installer, MSIX for the Microsoft Store. *In validation.*
 2. **Linux / Proxmox / Unraid** - static CLI + browser UI + server dashboard. *Shipping.* Next: AppImage desktop
    build, TrueNAS SCALE app, multi-server view.
 3. **MWM Rescue** - bootable USB (SystemRescue-based) with MWM, offline Windows repair (SFC /offbootdir,

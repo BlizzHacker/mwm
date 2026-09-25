@@ -1,6 +1,6 @@
 # Microsoft Store submission kit - MWM - Move Weight Manager
 
-Draft listing and packaging notes. **Do not upload the current package:** the native Windows CI scan passed, but Microsoft Defender on the publisher's PC detected the same MSIX payload as `HackTool:Win32/Mimikatz.NPTT` on 2026-09-24. The cause has not been confirmed. Resolve and rescan the exact package on the publisher's PC before submission; do not disable Defender.
+Draft listing and packaging notes. The first Windows package was detected by Microsoft Defender on the publisher's PC as `HackTool:Win32/Mimikatz.NPTT`. The Windows build now omits the embedded malware-family signature corpus; the replacement MSIX and extracted EXE from commit `e96f951` scanned clean locally with Defender enabled on 2026-09-25, and the native CI executable scan passed. The native WebView2 UI still needs an installed-app check before release. Do not disable Defender.
 
 Partner Center product: **MWM - Move Weight Manager**, Store ID `9NQNXS66M029`. Verified package identity on 2026-09-24: `MOVEWEIGHT.MWM-MoveWeightManager`, publisher `CN=6375D74B-5E4F-45B4-B246-B29507C1332A`, display name `MOVE WEIGHT`.
 
