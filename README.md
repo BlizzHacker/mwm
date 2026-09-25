@@ -34,7 +34,7 @@ Geek Squad / Hiren's repair kit** - with one ~4 MB app for Windows, and a single
 ## Install
 
 ### Windows 10 / 11
-Windows desktop packaging is in progress. The earlier preview triggered Microsoft Defender on the publisher's PC. The replacement MSIX and executable passed local Defender scans, but native WebView2 verification and Store certification are still pending. Use only a published release; no Windows release is available yet.
+Windows Store submission is in progress. The earlier preview triggered Microsoft Defender on the publisher's PC. The replacement MSIX and executable passed local and CI Defender scans, and the publisher confirmed the Commander right-click menu works in the updated installed Windows app. Store certification is still pending. Use only a published release; no Windows release is available yet.
 
 ### Proxmox VE / Debian / Ubuntu
 ```sh
