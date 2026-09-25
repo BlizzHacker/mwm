@@ -53,6 +53,10 @@
     .card p { color: #a9c1c5; line-height: 1.55; margin: 0; }
     .cta { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 32px; border: 1px solid #3d8476; border-radius: 18px; background: linear-gradient(110deg, #123d3d, #152733); }
     .cta p { color: #b9d2d1; margin: 8px 0 0; }
+    .status { display: flex; align-items: flex-start; gap: 14px; padding: 15px 0; border-top: 1px solid #284151; }
+    .status b { min-width: 112px; color: #70e6bd; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; }
+    .status span { color: #b3c9ca; line-height: 1.5; }
+    .status a { color: #79e6c6; text-decoration: underline; text-underline-offset: 3px; }
     footer { display: flex; justify-content: space-between; gap: 20px; padding: 32px 0 48px; color: #8fa9ad; font-size: 13px; }
     footer a { color: #bfd9d5; }
     @media (max-width: 850px) { .hero { grid-template-columns: 1fr; padding: 58px 0; gap: 44px; } .grid { grid-template-columns: 1fr 1fr; } }
@@ -65,7 +69,7 @@
       <a class="brand" href="/" aria-label="MWM home"><img src="/mwm-logo.svg" alt="">MWM</a>
       <nav aria-label="Primary">
         <a class="desktop-link" href="#features">Features</a>
-        <a class="desktop-link" href="https://github.com/BlizzHacker/mwm/releases/latest">Downloads</a>
+        <a class="desktop-link" href="#progress">v4 progress</a>
         <a class="nav-app" href="/app/">Open manager →</a>
       </nav>
     </header>
@@ -77,7 +81,7 @@
           <p class="lead">Inspect health, repair PCs, manage files, and see your Proxmox cluster from the same open source toolkit. Use the desktop app or sign in to your private web manager.</p>
           <div class="actions">
             <a class="button primary" href="/app/">Open manager →</a>
-            <a class="button secondary" href="https://github.com/BlizzHacker/mwm/releases/latest">Get MWM</a>
+            <a class="button secondary" href="https://github.com/BlizzHacker/mwm/pull/1">Follow v4 on GitHub</a>
           </div>
           <div class="proof">Windows desktop · Linux servers · Proxmox VE · Unraid</div>
         </div>
@@ -101,11 +105,19 @@
           <article class="card"><strong>03 / FILES</strong><h3>Commander</h3><p>Browse and move files with a dual-pane manager and background copy jobs.</p></article>
         </div>
       </section>
+      <section class="section" id="progress">
+        <div class="eyebrow">Build progress · September 2026</div>
+        <h2>See what is live and what is next.</h2>
+        <p class="section-intro">MWM v4 is being built in the open. The private web manager is running; the Windows desktop package is being validated before release.</p>
+        <div class="status"><b>Live now</b><span>SSO-protected web manager, Proxmox cluster view, node agents, service health, and MCP-ARR integration. <a href="/app/">Sign in to the manager</a>.</span></div>
+        <div class="status"><b>In review</b><span>Windows desktop and Store package, including native right-click checks and Microsoft Defender validation. <a href="https://github.com/BlizzHacker/mwm/pull/1">Follow the draft v4 pull request</a>.</span></div>
+        <div class="status"><b>Up next</b><span>File transfer across machines, a secure credential vault, and broader service controls. <a href="https://github.com/BlizzHacker/mwm/issues">Suggest or track a feature</a>.</span></div>
+      </section>
       <section class="section">
         <div class="cta"><div><h2>Your private manager is ready when you are.</h2><p>Sign in with your Move Weight account to reach the web app.</p></div><a class="button primary" href="/app/">Sign in →</a></div>
       </section>
     </main>
-    <footer><span>© 2026 Move Weight Manager. Open source under GPL-3.0-or-later.</span><span><a href="https://github.com/BlizzHacker/mwm">Source</a> · <a href="https://github.com/BlizzHacker/mwm/releases/latest">Releases</a></span></footer>
+    <footer><span>© 2026 Move Weight Manager. Open source under GPL-3.0-or-later.</span><span><a href="/privacy.html">Privacy</a> · <a href="https://github.com/BlizzHacker/mwm">Source</a> · <a href="https://github.com/BlizzHacker/mwm/releases/latest">Releases</a></span></footer>
   </div>
 </body>
 </html>

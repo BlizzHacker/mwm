@@ -16,7 +16,7 @@ VIEWS.lab = async function () {
   $("#page").innerHTML = `
     <div class="card">
       <h3 style="margin:0 0 8px">Analyze a file</h3>
-      <p class="muted">Static triage runs on the selected machine. It reads the file and reports hashes, structure, suspicious indicators and family matches.</p>
+      <p class="muted">Static triage runs on the selected machine. It reports hashes, structure, and suspicious indicators. Family matching is available on Linux; Windows uses Defender or a connected Arkana server for malware verdicts.</p>
       <div class="row" style="flex-wrap:wrap"><input class="search mono" id="lab-path" style="flex:1;min-width:260px" placeholder="Full path on selected machine" value="${esc(LAB.path)}">
         <button class="btn" id="lab-pick">Browse</button><button class="btn primary" id="lab-analyze">Analyze</button></div>
       <div id="lab-result" style="margin-top:14px"></div>
@@ -62,7 +62,7 @@ function drawLabResult() {
     <div class="note" style="margin-top:10px"><b>${esc(a.name)}</b><div class="mono wrap">SHA-256 ${esc(a.sha256)}</div>${arr(a.reasons).length ? `<div>${arr(a.reasons).map(esc).join(" · ")}</div>` : ""}</div>
     <div class="row" style="margin:12px 0;flex-wrap:wrap"><button class="btn" id="lab-av">Antivirus second opinion</button><button class="btn" id="lab-deep" ${LAB.status?.reachable ? "" : "disabled"}>Analyze with Arkana</button><button class="btn danger" id="lab-q">Quarantine file</button></div>
     <div id="lab-extra"></div>
-    <div class="grid g2"><div class="card"><h3>Family matches</h3>${arr(a.families).length ? arr(a.families).map((f) => `<div class="note" style="margin:8px 0"><b>${esc(f.family)}</b> · ${f.confidence}%<div class="muted">${esc(arr(f.evidence).join("; "))}</div></div>`).join("") : '<div class="muted">No family signature matched.</div>'}</div>
+    <div class="grid g2"><div class="card"><h3>Family matches</h3>${arr(a.families).length ? arr(a.families).map((f) => `<div class="note" style="margin:8px 0"><b>${esc(f.family)}</b> · ${f.confidence}%<div class="muted">${esc(arr(f.evidence).join("; "))}</div></div>`).join("") : '<div class="muted">No family match reported. For a malware verdict, use your antivirus or Arkana.</div>'}</div>
     <div class="card"><h3>Capabilities and indicators</h3>${arr(a.capabilities).slice(0, 25).map((c) => `<div><b>${esc(c.category)}</b> · ${esc(c.risk)} <span class="muted">${esc(c.meaning)}</span></div>`).join("") || '<div class="muted">No risky imports found.</div>'}
     ${arr(a.iocs).length ? `<div class="sep"></div>${arr(a.iocs).slice(0, 40).map((i) => `<div class="mono wrap">${esc(i.kind)} ${esc(i.value)}</div>`).join("")}` : ""}</div></div>`;
   $("#lab-av").onclick = async () => { $("#lab-extra").textContent = "Scanning..."; const r = await guard(() => invoke("lab_av_scan", { path: LAB.path })); $("#lab-extra").textContent = r || ""; };

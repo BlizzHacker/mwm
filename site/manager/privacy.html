@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MWM Privacy Policy</title>
+  <style>body{max-width:48rem;margin:3rem auto;padding:0 1.25rem;background:#0c1320;color:#ecf3ff;font:1rem/1.65 system-ui,sans-serif}a{color:#87c5ff}h1,h2{line-height:1.2}h2{margin-top:2rem}small{color:#afbed0}</style>
+</head>
+<body>
+  <p><a href="/">← Move Weight Manager</a></p>
+  <h1>MWM Privacy Policy</h1>
+  <small>Last updated: September 24, 2026</small>
+  <p>MWM is an open-source system utility for Windows and Linux. The desktop app and Linux agent do not include advertising or product analytics. MWM does not operate a central service that collects the contents of your devices. The public project website is separate from a private manager installation.</p>
+  <h2>Data the app can access</h2>
+  <p>At your request, MWM can read device information, files and file metadata, installed software, system logs, network and service status, and sensitive local items such as license keys, saved Wi-Fi passwords, and BitLocker recovery keys. The exact data depends on which page or command you use and the permissions available to MWM. Exports are written to the location you choose.</p>
+  <h2>Remote management</h2>
+  <p>If you configure MWM's web manager, agents, Proxmox connection, SSH, or service plugins, requests and results travel between the devices and services you select. These results can include sensitive system information. MWM's web interface requires an access token. Its built-in HTTP listener is not encrypted; use a trusted local network or a correctly configured HTTPS reverse proxy or VPN. If you expose a private manager through an identity provider such as Authentik, that provider and your reverse proxy process sign-in and access logs under their own configuration.</p>
+  <p>Optional integrations such as MCP-ARR, Arkana, and media managers use the endpoints and credentials you configure. Their operators may process the data you send them according to their own policies. MWM does not send credentials to the public project landing page.</p>
+  <h2>Local storage and retention</h2>
+  <p>MWM saves its settings, job state, and backups on the device where it runs. Windows settings are stored under <code>%LOCALAPPDATA%\MoveWeight\MWM</code>; Linux settings may be stored under <code>~/.local/share/MWM</code> or <code>/var/lib/MWM</code>. Configured agents, reverse proxies, and integrations can keep their own logs and state. Remove MWM's local data and integration configuration to end that storage; normal system backups can retain copies.</p>
+  <h2>Network requests</h2>
+  <p>MWM makes network requests when you use network diagnostics, software updates, remote management, or integrations. Diagnostics can contact your router, public DNS or internet test endpoints. Package managers contact their configured repositories. Your network and service operators may log those requests.</p>
+  <h2>Contact and changes</h2>
+  <p>For privacy questions, <a href="https://github.com/BlizzHacker/mwm/issues">open an issue</a>. Changes to this policy are recorded in the <a href="https://github.com/BlizzHacker/mwm">project repository</a>.</p>
+</body>
+</html>

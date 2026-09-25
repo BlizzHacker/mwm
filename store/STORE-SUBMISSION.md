@@ -1,6 +1,6 @@
 # Microsoft Store submission kit - MWM - Move Weight Manager
 
-Draft listing and packaging notes. **Do not upload this build yet:** Microsoft Defender detected the current Windows preview as `HackTool:Win32/Mimikatz.NPTT`. The signature/source cause has not been confirmed. The Windows Defender release gate must pass on the exact package candidate before submission.
+Draft listing and packaging notes. **Do not upload the current package:** the native Windows CI scan passed, but Microsoft Defender on the publisher's PC detected the same MSIX payload as `HackTool:Win32/Mimikatz.NPTT` on 2026-09-24. The cause has not been confirmed. Resolve and rescan the exact package on the publisher's PC before submission; do not disable Defender.
 
 Partner Center product: **MWM - Move Weight Manager**, Store ID `9NQNXS66M029`. Verified package identity on 2026-09-24: `MOVEWEIGHT.MWM-MoveWeightManager`, publisher `CN=6375D74B-5E4F-45B4-B246-B29507C1332A`, display name `MOVE WEIGHT`.
 
@@ -56,13 +56,13 @@ no "Pro" upsell, no telemetry.
 • Crashes & Events - blue screens, unexpected shutdowns and errors in one place.
 • Also: duplicate finder, disk analyzer, performance view, driver inventory, secure file shredder and free-space wipe.
 
-Everything MWM finds stays on your PC. Source code: github.com/BlizzHacker/mwm
+Local PC data stays on your PC unless you configure remote management or an integration; those features exchange requested results with the devices and services you choose. Source code: github.com/BlizzHacker/mwm
 
 **Features (up to 20, ≤ 200 chars each):** use the bullet list above, one per line.
 
 **Keywords (7):** pc cleaner; uninstaller; repair; file manager; product key; startup manager; system report
 
-**Category:** Utilities & tools (subcategory: none) · **Privacy policy URL:** https://github.com/BlizzHacker/mwm/blob/main/PRIVACY.md
+**Category:** Utilities & tools → Backup + manage · **Privacy policy URL:** https://manage.moveweight.com/privacy.html
 **Website:** https://github.com/BlizzHacker/mwm · **Support contact:** https://github.com/BlizzHacker/mwm/issues
 **Copyright:** © 2026 MoveWeight Foundation · **License terms:** GPL-3.0-or-later
 
@@ -70,14 +70,12 @@ Everything MWM finds stays on your PC. Source code: github.com/BlizzHacker/mwm
 **Store logo:** `store/logo-300.png` (300×300).
 
 ## 5. Age rating (IARC questionnaire)
-Category **Utility / productivity**. Answer **No** to every content question (violence, sexual content, gambling,
-user interaction/chat, location sharing, digital purchases). Expected rating: **3+ / Everyone**.
-(Lesson from the Cryptic Realm submission: do not tick "users can interact" - MWM has no online features.)
+Category **All Other App Types**. The Store draft answers Yes to online content because optional service plugins can display content from user-selected servers, and No to built-in user communication, violence, sexual content, gambling, location sharing and digital purchases. The preview is **3+ / Everyone**. Saving the rating requires accepting IARC Terms of Use in Partner Center.
 
 ## 6. Pricing & availability
 Free · all markets · Windows 10/11 Desktop.
 
 ## 7. Notes for certification (paste into "Notes for certification")
-> MWM is an open-source system utility. No account or sign-in. To exercise the main flow: open Health Check
+> MWM is an open-source system utility. Local PC features require no account. To exercise the main flow: open Health Check
 > (scan starts automatically) → Custom Clean → Scan. Actions that change the system always show a confirmation
 > first. Administrator-only repairs show a UAC prompt; declining it is handled gracefully.

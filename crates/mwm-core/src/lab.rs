@@ -44,7 +44,15 @@ struct Family {
 
 fn families() -> &'static Vec<Family> {
     static F: OnceLock<Vec<Family>> = OnceLock::new();
-    F.get_or_init(|| serde_json::from_str(include_str!("../data/families.json")).unwrap_or_default())
+    F.get_or_init(|| {
+        // The broad offline malware corpus contains known threat strings. On
+        // Windows, leave family verdicts to Defender or the user's Arkana
+        // instance; MWM still provides file structure, hashes, and IOCs.
+        #[cfg(windows)]
+        { Vec::new() }
+        #[cfg(not(windows))]
+        { serde_json::from_str(include_str!("../data/families.json")).unwrap_or_default() }
+    })
 }
 
 /// Arkana's CATEGORIZED_IMPORTS_DB: api -> (risk, category).
@@ -890,6 +898,7 @@ mod tests {
 
     #[test]
     fn data_loads() {
+        #[cfg(not(windows))]
         assert!(families().len() > 100, "families: {}", families().len());
         assert!(risky_apis().contains_key("CreateRemoteThread"));
         assert_eq!(strip_aw("RegSetValueExW"), "RegSetValueEx");
