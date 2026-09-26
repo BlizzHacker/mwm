@@ -7,6 +7,8 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+#[cfg(windows)]
+use base64::Engine;
 
 use crate::util;
 
@@ -32,18 +34,69 @@ fn file() -> std::path::PathBuf {
 }
 
 fn load() -> Vec<Conn> {
-    std::fs::read_to_string(file()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+    let mut all: Vec<Conn> = std::fs::read_to_string(file()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    #[cfg(windows)]
+    {
+        let mut migrate = false;
+        for c in &mut all {
+            if let Some(encoded) = c.token.strip_prefix("dpapi:") {
+                c.token = unprotect_token(encoded).unwrap_or_default();
+            } else if !c.token.is_empty() {
+                migrate = true;
+            }
+        }
+        if migrate { let _ = store(&all); }
+    }
+    all
 }
 
 fn store(list: &[Conn]) -> anyhow::Result<()> {
     let path = file();
-    std::fs::write(&path, serde_json::to_string_pretty(list)?)?;
+    #[cfg(windows)]
+    let saved: Vec<Conn> = list.iter().map(|c| {
+        let mut protected = c.clone();
+        if !protected.token.is_empty() { protected.token = format!("dpapi:{}", protect_token(&protected.token)?); }
+        Ok::<_, anyhow::Error>(protected)
+    }).collect::<anyhow::Result<_>>()?;
+    #[cfg(not(windows))]
+    let saved = list.to_vec();
+    std::fs::write(&path, serde_json::to_string_pretty(&saved)?)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
         let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
     }
     Ok(())
+}
+
+#[cfg(windows)]
+pub(crate) fn protect_token(token: &str) -> anyhow::Result<String> {
+    use windows_sys::Win32::Foundation::LocalFree;
+    use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN};
+    let bytes = token.as_bytes();
+    let input = CRYPT_INTEGER_BLOB { cbData: bytes.len() as u32, pbData: bytes.as_ptr() as *mut u8 };
+    let mut output = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
+    let ok = unsafe { CryptProtectData(&input, std::ptr::null(), std::ptr::null(), std::ptr::null(), std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN, &mut output) };
+    if ok == 0 { anyhow::bail!("Windows could not protect the machine token: {}", std::io::Error::last_os_error()); }
+    let encrypted = unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize) };
+    let value = base64::engine::general_purpose::STANDARD.encode(encrypted);
+    unsafe { LocalFree(output.pbData as *mut std::ffi::c_void); }
+    Ok(value)
+}
+
+#[cfg(windows)]
+pub(crate) fn unprotect_token(encoded: &str) -> anyhow::Result<String> {
+    use windows_sys::Win32::Foundation::LocalFree;
+    use windows_sys::Win32::Security::Cryptography::{CryptUnprotectData, CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN};
+    let bytes = base64::engine::general_purpose::STANDARD.decode(encoded)?;
+    let input = CRYPT_INTEGER_BLOB { cbData: bytes.len() as u32, pbData: bytes.as_ptr() as *mut u8 };
+    let mut output = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
+    let ok = unsafe { CryptUnprotectData(&input, std::ptr::null_mut(), std::ptr::null(), std::ptr::null(), std::ptr::null(), CRYPTPROTECT_UI_FORBIDDEN, &mut output) };
+    if ok == 0 { anyhow::bail!("Windows could not unlock the saved machine token: {}", std::io::Error::last_os_error()); }
+    let plain = unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize) };
+    let value = String::from_utf8(plain.to_vec());
+    unsafe { LocalFree(output.pbData as *mut std::ffi::c_void); }
+    Ok(value?)
 }
 
 pub fn list() -> Vec<ConnView> {
@@ -142,5 +195,14 @@ mod tests {
         assert_eq!(normalize("http://10.0.0.5:7777/?token=abc", ""), ("http://10.0.0.5:7777".into(), "abc".into()));
         assert_eq!(normalize("https://mwm.example.com:443/", "x").0, "https://mwm.example.com:443");
         assert!(call("nope", "remote_call", &Value::Null).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn dpapi_round_trip_for_machine_token() {
+        let plain = "synthetic-test-token-never-for-production";
+        let protected = protect_token(plain).unwrap();
+        assert!(!protected.contains(plain));
+        assert_eq!(unprotect_token(&protected).unwrap(), plain);
     }
 }

@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "MWM Manager",
+  "version": "4.0.0",
+  "description": "Open your SSO-protected Move Weight Manager from Brave or Chrome.",
+  "action": {
+    "default_title": "Open MWM Manager",
+    "default_popup": "popup.html"
+  },
+  "permissions": []
+}

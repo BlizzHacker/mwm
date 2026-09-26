@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1320">
+  <meta name="description" content="Move Weight Manager brings PC repair, server health, and Proxmox cluster management into one open source desktop and web app.">
+  <title>MWM — Move Weight Manager</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, Segoe UI, system-ui, sans-serif; background: #0b1320; color: #edf7f5; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: radial-gradient(circle at 80% 10%, #0b3c40 0, transparent 32rem), #0b1320; }
+    a { color: inherit; text-decoration: none; }
+    .wrap { width: min(1160px, calc(100% - 40px)); margin: auto; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 24px 0; }
+    .brand { display: flex; align-items: center; gap: 11px; font-size: 20px; font-weight: 800; letter-spacing: .08em; }
+    .brand img { width: 38px; height: 38px; }
+    nav { display: flex; align-items: center; gap: 22px; font-size: 14px; color: #a8c2c2; }
+    nav a:hover, .text-link:hover { color: #57e6ba; }
+    .nav-app { border: 1px solid #52cca7; color: #e8fff5; border-radius: 999px; padding: 10px 17px; }
+    .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; padding: 96px 0 90px; }
+    .eyebrow { color: #57e6ba; font-size: 12px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; }
+    h1 { max-width: 640px; margin: 18px 0 22px; font-size: clamp(42px, 5.6vw, 76px); line-height: 1.04; letter-spacing: -.055em; }
+    .lead { max-width: 560px; color: #b2c9ca; font-size: 19px; line-height: 1.65; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+    .button { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 22px; border-radius: 11px; font-weight: 750; }
+    .primary { background: #55e5af; color: #062822; }
+    .primary:hover { background: #83f5cc; }
+    .secondary { border: 1px solid #47616b; background: #132533; }
+    .secondary:hover { border-color: #74d8bb; }
+    .proof { margin-top: 25px; color: #89a9ad; font-size: 13px; }
+    .screen { position: relative; border: 1px solid #385a64; border-radius: 18px; background: #111d2a; padding: 12px; box-shadow: 0 26px 80px #0008; transform: rotate(1deg); }
+    .screen::before { content: "CLUSTER OVERVIEW"; display: block; padding: 5px 7px 12px; color: #6fe5bc; font-size: 10px; font-weight: 800; letter-spacing: .2em; }
+    .mock { background: #0c1722; border: 1px solid #294250; border-radius: 9px; padding: 22px; }
+    .mock-head { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 20px; font-size: 15px; font-weight: 750; }
+    .mock-head span { color: #6fe5bc; font-size: 11px; text-transform: uppercase; letter-spacing: .1em; }
+    .mock-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .mock-stat { background: #172634; border: 1px solid #294250; border-radius: 8px; padding: 14px 12px; }
+    .mock-stat b { display: block; font-size: 25px; }
+    .mock-stat small { display: block; margin-top: 3px; color: #9cb7bd; font-size: 10px; }
+    .mock-label { margin: 28px 0 8px; color: #82a8ac; font-size: 10px; letter-spacing: .13em; text-transform: uppercase; }
+    .mock-row { display: grid; grid-template-columns: 1fr 60px 90px; align-items: center; gap: 8px; padding: 12px; border-top: 1px solid #243e4d; font-size: 12px; }
+    .mock-row em { color: #65dfb0; font-size: 10px; font-style: normal; }
+    .meter { height: 5px; border-radius: 4px; background: #263947; overflow: hidden; }
+    .meter i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #54dfa9, #43b7d6); }
+    .section { padding: 74px 0; border-top: 1px solid #1f3846; }
+    h2 { font-size: clamp(28px, 3vw, 40px); letter-spacing: -.04em; margin: 0 0 12px; }
+    .section-intro { max-width: 670px; color: #a5bec3; line-height: 1.65; margin: 0 0 32px; }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .card { min-height: 194px; padding: 25px; background: #122330; border: 1px solid #264351; border-radius: 16px; }
+    .card strong { color: #69e8bd; font-size: 14px; letter-spacing: .06em; }
+    .card h3 { margin: 13px 0 8px; font-size: 21px; }
+    .card p { color: #a9c1c5; line-height: 1.55; margin: 0; }
+    .cta { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 32px; border: 1px solid #3d8476; border-radius: 18px; background: linear-gradient(110deg, #123d3d, #152733); }
+    .cta p { color: #b9d2d1; margin: 8px 0 0; }
+    .status { display: flex; align-items: flex-start; gap: 14px; padding: 15px 0; border-top: 1px solid #284151; }
+    .status b { min-width: 112px; color: #70e6bd; font-size: 12px; letter-spacing: .05em; text-transform: uppercase; }
+    .status span { color: #b3c9ca; line-height: 1.5; }
+    .status a { color: #79e6c6; text-decoration: underline; text-underline-offset: 3px; }
+    footer { display: flex; justify-content: space-between; gap: 20px; padding: 32px 0 48px; color: #8fa9ad; font-size: 13px; }
+    footer a { color: #bfd9d5; }
+    @media (max-width: 850px) { .hero { grid-template-columns: 1fr; padding: 58px 0; gap: 44px; } .grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 600px) { nav .desktop-link { display: none; } .grid { grid-template-columns: 1fr; } .cta, footer { flex-direction: column; align-items: flex-start; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <a class="brand" href="/" aria-label="MWM home"><img src="/mwm-logo.svg" alt="">MWM</a>
+      <nav aria-label="Primary">
+        <a class="desktop-link" href="#features">Features</a>
+        <a class="desktop-link" href="#progress">v4 progress</a>
+        <a class="nav-app" href="/app/">Open manager →</a>
+      </nav>
+    </header>
+    <main>
+      <section class="hero">
+        <div>
+          <div class="eyebrow">Move Weight Manager</div>
+          <h1>One place to keep every machine moving.</h1>
+          <p class="lead">Inspect health, repair PCs, manage files, and see your Proxmox cluster from the same open source toolkit. Use the desktop app or sign in to your private web manager.</p>
+          <div class="actions">
+            <a class="button primary" href="/app/">Open manager →</a>
+            <a class="button secondary" href="https://github.com/BlizzHacker/mwm/pull/1">Follow v4 on GitHub</a>
+          </div>
+          <div class="proof">Windows desktop · Linux servers · Proxmox VE · Unraid</div>
+        </div>
+        <div class="screen" role="img" aria-label="Illustration of a cluster dashboard with three online nodes">
+          <div class="mock">
+            <div class="mock-head">Cluster overview <span>Illustrative preview</span></div>
+            <div class="mock-stats"><div class="mock-stat"><b>03</b><small>Nodes online</small></div><div class="mock-stat"><b>24</b><small>Guests monitored</small></div><div class="mock-stat"><b>02</b><small>Alerts to review</small></div></div>
+            <div class="mock-label">Node health</div>
+            <div class="mock-row"><strong>Node 01</strong><em>ONLINE</em><span class="meter"><i style="width:56%"></i></span></div>
+            <div class="mock-row"><strong>Node 02</strong><em>ONLINE</em><span class="meter"><i style="width:72%"></i></span></div>
+            <div class="mock-row"><strong>Node 03</strong><em>ONLINE</em><span class="meter"><i style="width:41%"></i></span></div>
+          </div>
+        </div>
+      </section>
+      <section class="section" id="features">
+        <h2>Tools that work together.</h2>
+        <p class="section-intro">MWM keeps routine support work close to the machines you manage, with one interface for local desktops and connected servers.</p>
+        <div class="grid">
+          <article class="card"><strong>01 / SERVERS</strong><h3>Cluster visibility</h3><p>Inspect Proxmox guests, nodes, storage, tasks, and backup coverage across the cluster.</p></article>
+          <article class="card"><strong>02 / DESKTOPS</strong><h3>Health and repair</h3><p>Find common issues, run built-in repairs, and keep long-running work visible.</p></article>
+          <article class="card"><strong>03 / FILES</strong><h3>Commander</h3><p>Browse and move files with a dual-pane manager and background copy jobs.</p></article>
+        </div>
+      </section>
+      <section class="section" id="progress">
+        <div class="eyebrow">Build progress · September 2026</div>
+        <h2>See what is live and what is next.</h2>
+        <p class="section-intro">MWM v4 is being built in the open. The private web manager is running; the Windows desktop package is being validated before release.</p>
+        <div class="status"><b>Live now</b><span>SSO-protected web manager, Proxmox cluster view, node agents, service health, and MCP-ARR integration. <a href="/app/">Sign in to the manager</a>.</span></div>
+        <div class="status"><b>Store preparation</b><span>Windows desktop right-click has been confirmed, and the Defender-clean MSIX is validated in Partner Center. Certification submission is next. <a href="https://github.com/BlizzHacker/mwm/pull/1">Follow the draft v4 pull request</a>.</span></div>
+        <div class="status"><b>Up next</b><span>File transfer across machines, a secure credential vault, and broader service controls. <a href="https://github.com/BlizzHacker/mwm/issues">Suggest or track a feature</a>.</span></div>
+      </section>
+      <section class="section">
+        <div class="cta"><div><h2>Your private manager is ready when you are.</h2><p>Sign in with your Move Weight account to reach the web app.</p></div><a class="button primary" href="/app/">Sign in →</a></div>
+      </section>
+    </main>
+    <footer><span>© 2026 Move Weight Manager. Open source under GPL-3.0-or-later.</span><span><a href="/privacy.html">Privacy</a> · <a href="https://github.com/BlizzHacker/mwm">Source</a> · <a href="https://github.com/BlizzHacker/mwm/releases/latest">Releases</a></span></footer>
+  </div>
+</body>
+</html>

@@ -5,6 +5,7 @@
 //! each module, so the UI never has to care where it is running.
 
 pub mod api;
+pub mod arkana;
 pub mod apps;
 pub mod cleaner;
 pub mod disk;
@@ -13,8 +14,13 @@ pub mod dupes;
 pub mod files;
 pub mod jobs;
 pub mod keys;
+pub mod lab;
+pub mod lxc_fs;
+pub mod mcp_arr;
+pub mod plugins;
 pub mod fsutil;
 pub mod procs;
+pub mod pve;
 pub mod remote;
 pub mod server;
 pub mod shred;
@@ -23,5 +29,7 @@ pub mod sys;
 pub mod toolkit;
 pub mod updater;
 pub mod util;
+pub mod vault;
+pub mod web;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

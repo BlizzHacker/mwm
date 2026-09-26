@@ -1,0 +1,2 @@
+app/ui/vendor/* text eol=lf
+tools/vault-build/package-lock.json text eol=lf

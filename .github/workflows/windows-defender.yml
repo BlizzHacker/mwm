@@ -1,0 +1,72 @@
+name: Windows Defender release gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  defender:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify bundled KDBX dependencies
+        shell: pwsh
+        run: |
+          npm ci --prefix tools/vault-build
+          npm audit --prefix tools/vault-build
+          npm run build --prefix tools/vault-build
+          git diff --exit-code -- app/ui/vendor
+          node --check app/ui/vault.js
+      - name: Test Windows core
+        run: cargo test -p mwm-core --lib
+      - name: Build Windows desktop executable
+        run: cargo build --release -p mwm-app
+      - name: Scan build with Microsoft Defender
+        shell: pwsh
+        run: |
+          $candidate = Join-Path $env:GITHUB_WORKSPACE 'target\release\MoveWeightManager.exe'
+          if (-not (Test-Path -LiteralPath $candidate)) {
+            Get-ChildItem target\release -Filter *.exe | Select-Object -ExpandProperty Name
+            throw 'Desktop executable was not produced'
+          }
+          $status = Get-MpComputerStatus
+          if (-not $status.AMServiceEnabled -or -not $status.AntivirusEnabled) {
+            throw 'Microsoft Defender is unavailable on this runner; this gate cannot certify the build'
+          }
+          Start-MpScan -ScanType CustomScan -ScanPath $candidate
+          if (-not (Test-Path -LiteralPath $candidate)) {
+            throw 'Microsoft Defender blocked or quarantined the desktop executable'
+          }
+          $hits = @(Get-MpThreatDetection | Where-Object {
+            @($_.Resources) | Where-Object { $_ -like "*$candidate*" }
+          })
+          if ($hits.Count -gt 0) {
+            $hits | Select-Object ThreatID, InitialDetectionTime, ActionSuccess | Format-Table
+            throw 'Microsoft Defender detected the desktop executable'
+          }
+          Write-Output 'Microsoft Defender scan passed'
+      - name: Build Store MSIX after clean scan
+        shell: pwsh
+        run: .\packaging\msix\build-msix.ps1 -Exe "$env:GITHUB_WORKSPACE\target\release\MoveWeightManager.exe" -Version "0.3.0"
+      - name: Scan Store MSIX with Microsoft Defender
+        shell: pwsh
+        run: |
+          $candidate = Join-Path $env:GITHUB_WORKSPACE 'dist\msix\0.3.0\MWM_0.3.0_x64.msix'
+          if (-not (Test-Path -LiteralPath $candidate)) { throw 'MSIX was not produced' }
+          Start-MpScan -ScanType CustomScan -ScanPath $candidate
+          if (-not (Test-Path -LiteralPath $candidate)) { throw 'Microsoft Defender blocked or quarantined the MSIX' }
+          $hits = @(Get-MpThreatDetection | Where-Object {
+            @($_.Resources) | Where-Object { $_ -like "*$candidate*" }
+          })
+          if ($hits.Count -gt 0) { throw 'Microsoft Defender detected the MSIX' }
+          Write-Output 'Microsoft Defender MSIX scan passed'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mwm-store-candidate
+          path: dist/msix/0.3.0/MWM_0.3.0_x64.msix
+          if-no-files-found: error

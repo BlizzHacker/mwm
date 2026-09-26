@@ -1,21 +1,22 @@
 # Microsoft Store submission kit - MWM - Move Weight Manager
 
-Everything Partner Center asks for, ready to paste. Seller: **MOVEWEIGHT**
-(`CN=6375D74B-5E4F-45B4-B246-B29507C1332A`).
+Draft listing and packaging notes. The first Windows package was detected by Microsoft Defender on the publisher's PC as `HackTool:Win32/Mimikatz.NPTT`. The Windows build now omits the embedded malware-family signature corpus. The final MSIX from commit `ec5e968` and its extracted EXE scanned clean locally with Defender enabled on 2026-09-25, and the native CI executable and package scans passed. The publisher confirmed the Commander right-click menu works in the updated installed Windows app. Do not disable Defender.
 
-## 1. Reserve the name (you, in Partner Center)
-Apps and games → New product → **MSIX or PWA app** → reserve **"MWM - Move Weight Manager"**
-(fallbacks: "Move Weight Manager", "MWM PC Doctor").
-Then *Product management → Product identity* and check:
+The final MSIX is uploaded and validated in Partner Center (SHA256 `5457213037588299048441069EA074F3914A65668EEBF2A77578BAA2C4339A2B`). Pricing, properties, four screenshots, packages, and submission options are complete. The age rating still needs IARC Terms acceptance before certification can be submitted. The restricted capabilities need Microsoft's approval during certification.
+
+Partner Center product: **MWM - Move Weight Manager**, Store ID `9NQNXS66M029`. Verified package identity on 2026-09-24: `MOVEWEIGHT.MWM-MoveWeightManager`, publisher `CN=6375D74B-5E4F-45B4-B246-B29507C1332A`, display name `MOVE WEIGHT`.
+
+## 1. Reserved identity
+The name has been reserved as an **MSIX or PWA app**. *Product management → Product identity* shows:
 
 | Field | Value in `packaging/msix/AppxManifest.xml` |
 |---|---|
-| Package/Identity/Name | `MOVEWEIGHT.MoveWeightManager` |
+| Package/Identity/Name | `MOVEWEIGHT.MWM-MoveWeightManager` |
 | Package/Identity/Publisher | `CN=6375D74B-5E4F-45B4-B246-B29507C1332A` |
-| Package/Properties/PublisherDisplayName | `MOVEWEIGHT` |
+| Package/Properties/PublisherDisplayName | `MOVE WEIGHT` |
 
-If Partner Center shows a different Identity Name, change it in the manifest and rebuild:
-`packaging/msix/build-msix.ps1 -Exe <MWM-portable.exe> -Icons <icons dir> -Version <x.y.z>`.
+Build after the Defender gate passes:
+`packaging/msix/build-msix.ps1 -Exe <MoveWeightManager.exe> -Version <x.y.z>`.
 
 ## 2. Package
 Upload **`MWM_<version>_x64.msix`** (unsigned - the Store signs it). Target: Windows 10 1809+ desktop, x64.
@@ -57,13 +58,13 @@ no "Pro" upsell, no telemetry.
 • Crashes & Events - blue screens, unexpected shutdowns and errors in one place.
 • Also: duplicate finder, disk analyzer, performance view, driver inventory, secure file shredder and free-space wipe.
 
-Everything MWM finds stays on your PC. Source code: github.com/BlizzHacker/mwm
+Local PC data stays on your PC unless you configure remote management or an integration; those features exchange requested results with the devices and services you choose. Source code: github.com/BlizzHacker/mwm
 
 **Features (up to 20, ≤ 200 chars each):** use the bullet list above, one per line.
 
 **Keywords (7):** pc cleaner; uninstaller; repair; file manager; product key; startup manager; system report
 
-**Category:** Utilities & tools (subcategory: none) · **Privacy policy URL:** https://github.com/BlizzHacker/mwm/blob/main/PRIVACY.md
+**Category:** Utilities & tools → Backup + manage · **Privacy policy URL:** https://manage.moveweight.com/privacy.html
 **Website:** https://github.com/BlizzHacker/mwm · **Support contact:** https://github.com/BlizzHacker/mwm/issues
 **Copyright:** © 2026 MoveWeight Foundation · **License terms:** GPL-3.0-or-later
 
@@ -71,14 +72,12 @@ Everything MWM finds stays on your PC. Source code: github.com/BlizzHacker/mwm
 **Store logo:** `store/logo-300.png` (300×300).
 
 ## 5. Age rating (IARC questionnaire)
-Category **Utility / productivity**. Answer **No** to every content question (violence, sexual content, gambling,
-user interaction/chat, location sharing, digital purchases). Expected rating: **3+ / Everyone**.
-(Lesson from the Cryptic Realm submission: do not tick "users can interact" - MWM has no online features.)
+Category **All Other App Types**. The Store draft answers Yes to online content because optional service plugins can display content from user-selected servers, and No to built-in user communication, violence, sexual content, gambling, location sharing and digital purchases. The preview is **3+ / Everyone**. Saving the rating requires accepting IARC Terms of Use in Partner Center.
 
 ## 6. Pricing & availability
 Free · all markets · Windows 10/11 Desktop.
 
 ## 7. Notes for certification (paste into "Notes for certification")
-> MWM is an open-source system utility. No account or sign-in. To exercise the main flow: open Health Check
+> MWM is an open-source system utility. Local PC features require no account. To exercise the main flow: open Health Check
 > (scan starts automatically) → Custom Clean → Scan. Actions that change the system always show a confirmation
 > first. Administrator-only repairs show a UAC prompt; declining it is handled gracefully.

@@ -1,4 +1,4 @@
-//! Installed programs, uninstall, and Revo-style leftover hunting.
+//! Installed programs, uninstall, and leftover hunting.
 //!
 //! Leftover removal is deliberately reversible: folders and files go to the
 //! Recycle Bin / Trash, registry keys are exported to a `.reg` backup first.

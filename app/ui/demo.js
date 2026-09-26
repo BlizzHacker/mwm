@@ -39,7 +39,7 @@
   let apps = [
     A("7-Zip 25.01 (x64)", "Igor Pavlov", "25.01", 6 * MB, "2025-09-14"),
     A("Brave", "Brave Software Inc", "140.1.82.170", 0, "2026-09-01", "win32-user"),
-    A("CCleaner", "Piriform Software", "7.2.1123", 212 * MB, "2026-08-30"),
+    A("Audacity 3.7.5", "Audacity Team", "3.7.5", 96 * MB, "2026-08-30"),
     A("Discord", "Discord Inc.", "1.0.9205", 88 * MB, "2026-03-11", "win32-user"),
     A("Dropbox", "Dropbox, Inc.", "231.4.5732", 410 * MB, "2026-05-02"),
     A("EA app", "Electronic Arts", "13.512.0", 1.2 * GB, "2025-12-24"),
@@ -50,7 +50,7 @@
     A("Microsoft Visual Studio Code (User)", "Microsoft Corporation", "1.124.2", 420 * MB, "2026-07-21", "win32-user"),
     A("Mozilla Thunderbird (x64 en-US)", "Mozilla", "154.0", 260 * MB, "2026-06-09"),
     A("Python 3.13.0 (64-bit)", "Python Software Foundation", "3.13.150.0", 110 * MB, "2025-02-17"),
-    A("Revo Uninstaller 2.6.5", "VS Revo Group, Ltd.", "2.6.5", 38 * MB, "2026-09-02"),
+    A("Notepad++ (64-bit x64)", "Notepad++ Team", "8.8.5", 18 * MB, "2026-09-02"),
     A("VLC media player", "VideoLAN", "3.0.23", 170 * MB, "2025-04-30"),
     A("YouTubeToMP3", "MediaHuman", "3.9.9.93", 94 * MB, "2024-11-12"),
   ];

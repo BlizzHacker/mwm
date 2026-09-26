@@ -1,5 +1,4 @@
-//! Junk / cache / privacy cleaning (CCleaner "Custom Clean", Revo "Junk Files",
-//! "Browsers Cleaner" and "Windows Cleaner").
+//! Junk / cache / privacy cleaning.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;

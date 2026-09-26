@@ -3,7 +3,7 @@
   MWM - Move Weight Manager: Microsoft Store (MSIX) manifest.
   Identity Name / Publisher MUST match the reservation in Partner Center
   (Product identity page) or the upload is rejected. Publisher below is the
-  MOVEWEIGHT seller account; Name is the expected reservation name.
+  MOVEWEIGHT seller account; Name is the verified Partner Center identity.
 -->
 <Package
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
@@ -13,14 +13,14 @@
   IgnorableNamespaces="uap desktop6 rescap">
 
   <Identity
-    Name="MOVEWEIGHT.MoveWeightManager"
+    Name="MOVEWEIGHT.MWM-MoveWeightManager"
     Publisher="CN=6375D74B-5E4F-45B4-B246-B29507C1332A"
     Version="__VERSION__.0"
     ProcessorArchitecture="x64" />
 
   <Properties>
     <DisplayName>MWM - Move Weight Manager</DisplayName>
-    <PublisherDisplayName>MOVEWEIGHT</PublisherDisplayName>
+    <PublisherDisplayName>MOVE WEIGHT</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
     <Description>Free, open-source PC cleaner and uninstaller. Clean junk and browser caches, uninstall programs with leftover removal, manage startup apps and services, update software via winget, find duplicates, analyze disk space and securely delete files.</Description>
     <!-- A cleaner must see the real AppData/registry, not a per-package copy. -->

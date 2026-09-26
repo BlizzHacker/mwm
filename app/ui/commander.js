@@ -136,7 +136,7 @@ function drawPane(p) {
   const arrow = (k) => (p.sort.key === k ? (p.sort.dir > 0 ? " ▴" : " ▾") : "");
   list.innerHTML = p.error && !p.rows.length
     ? `<div class="empty"><h3>Can't open this folder</h3>${esc(p.error)}</div>`
-    : `<table class="table ftable"><thead><tr><th class="sort" data-sortk="name">Name${arrow("name")}</th><th class="sort" data-sortk="ext" style="width:62px">Ext${arrow("ext")}</th><th class="sort num" data-sortk="size" style="width:92px">Size${arrow("size")}</th><th class="sort" data-sortk="date" style="width:138px">Modified${arrow("date")}</th></tr></thead>
+    : `<table class="table ftable"><thead><tr><th class="sort" data-sortk="name">Name${arrow("name")}</th><th class="sort c-ext" data-sortk="ext" style="width:62px">Ext${arrow("ext")}</th><th class="sort num" data-sortk="size" style="width:92px">Size${arrow("size")}</th><th class="sort c-date" data-sortk="date" style="width:138px">Modified${arrow("date")}</th></tr></thead>
       <tbody>${p.rows.map((r, i) => rowHtml(p, r, i)).join("")}</tbody></table>`;
   drawFoot(p);
   scrollCursor(p);
@@ -146,7 +146,7 @@ function rowHtml(p, r, i) {
   const size = r.up ? "" : r.is_dir ? (p.sizes[r.path] !== undefined ? bytes(p.sizes[r.path]) : "&lt;DIR&gt;") : bytes(r.size);
   const name = r.is_dir || !r.ext ? r.name : r.name.slice(0, -(r.ext.length + 1));
   return `<tr data-i="${i}" class="${i === p.cursor ? "cur" : ""} ${p.sel.has(r.path) ? "picked" : ""} ${r.hidden ? "hid" : ""} ${r.is_dir ? "dir" : ""}">
-    <td class="fname"><span class="glyph">${fileGlyph(r)}</span>${esc(name)}</td><td class="muted">${r.is_dir ? "" : esc(r.ext)}</td><td class="num">${size}</td><td class="muted">${r.up ? "" : fmtDate(r.modified)}</td></tr>`;
+    <td class="fname"><span class="glyph">${fileGlyph(r)}</span>${esc(name)}</td><td class="muted c-ext">${r.is_dir ? "" : esc(r.ext)}</td><td class="num">${size}</td><td class="muted c-date">${r.up ? "" : fmtDate(r.modified)}</td></tr>`;
 }
 
 function drawFoot(p) {
@@ -196,8 +196,9 @@ function wirePanes() {
         const [a, b] = [Math.min(p.cursor, i), Math.max(p.cursor, i)];
         for (let k = a; k <= b; k++) if (!p.rows[k].up) p.sel.add(p.rows[k].path);
         drawPane(p);
-      } else if (e.button === 2) toggleSel(p, i);
-      setCursor(p, i);
+      }
+      // Right-click is handled by the context menu (ctx.js).
+      if (e.button !== 2) setCursor(p, i);
     };
     list.ondblclick = (e) => { if (e.target.closest("tr[data-i]")) openCursor(p); };
     list.oncontextmenu = (e) => e.preventDefault();

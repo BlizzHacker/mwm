@@ -273,3 +273,19 @@ select.search { min-width: 0; }
 .remote-banner { background: #10283a; border: 1px solid #1d4a66; color: #bfe6f5; border-radius: 999px; padding: 5px 12px; font-size: 12.5px; }
 .mcard .v { font-size: 18px; font-weight: 700; }
 .mcard .off { opacity: 0.6; }
+
+/* ---------- context menu ---------- */
+.ctx { position: fixed; z-index: 50; min-width: 230px; max-width: 340px; background: #19202f; border: 1px solid #2c3750; border-radius: 10px; padding: 5px; box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55); opacity: 1; }
+.ctx-item { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: 0; color: var(--text); padding: 7px 10px; border-radius: 6px; cursor: pointer; text-align: left; font-size: 13px; }
+.ctx-item:hover, .ctx-item:focus { background: #25314a; outline: none; }
+.ctx-item.danger { color: var(--danger); }
+.ctx-item:disabled { opacity: 0.4; cursor: default; background: none; }
+.ctx-ico { width: 18px; text-align: center; flex: none; opacity: 0.85; }
+.ctx-l { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx-k { color: var(--faint); font-size: 11.5px; font-family: var(--mono); }
+.ctx-sep { height: 1px; background: #2c3750; margin: 4px 6px; }
+
+/* Commander panes adapt to their own width: names always get room. */
+.pane { container-type: inline-size; }
+@container (max-width: 520px) { .ftable .c-date { display: none; } }
+@container (max-width: 360px) { .ftable .c-ext { display: none; } }
