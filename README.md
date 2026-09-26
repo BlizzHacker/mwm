@@ -22,6 +22,7 @@ Geek Squad / Hiren's repair kit** - with one ~4 MB app for Windows, and a single
 | **Software Updater** | Free, via winget / apt / brew - updates straight from the publisher |
 | **Commander** | Dual-pane, keyboard-first file manager (Double Commander / Geek Squad FMOD style): F3 view (text/image/hex), F5 copy, F6 move, F7 mkdir, F8 recycle, search by name/content, compare panes, multi-rename, zip pack/unpack, folder sizes, network drives. Copies run as background jobs with progress, cancel and conflict handling |
 | **Keys & Licenses** | Windows key from firmware (OEM) and decoded from the registry, every license's status, Office 2010/2013 keys, **BitLocker recovery keys**, saved Wi-Fi passwords; SSH host keys, Proxmox subscription, Unraid license, WireGuard on Linux. Show / copy / export |
+| **Vault** | Open, edit and save KeePassXC-compatible KDBX3/4 databases in the desktop or web UI. Groups, entry history, attachments, key files, TOTP, password generation, search, encrypted KDBX backups and machine-key import. Master credentials remain in the UI process; agents store encrypted KDBX bytes only. |
 | **Repair** | SFC, DISM RestoreHealth + component cleanup, chkdsk, Windows Update reset, restore point, clock resync, icon cache, DNS flush, IP renew, network stack reset, print spooler, Defender update / quick / full scan, battery + energy reports, memory test. Linux: fix broken packages, remove old kernels, Docker cleanup, ZFS scrub, SMART self-tests, journal vacuum. Live output, keeps running across pages |
 | **System Report** | Maker/model/serial, BIOS, board, CPU, RAM sticks, GPUs, activation, disk health (temp, wear, hours, errors), battery - exportable HTML report for a customer or a ticket |
 | **Security** | Defender, firewall, UAC, BitLocker, threat history |
@@ -70,6 +71,11 @@ mwm --json <command>     machine-readable output
 - `mwm serve` requires a random access token (HttpOnly, SameSite=Strict cookie; JSON-only API, so no CSRF);
   `--read-only` refuses every change. It is plain HTTP - keep it on your LAN or behind a reverse proxy / VPN.
 - Local credentials are not sent to the public MWM site. When you connect one MWM agent to another, results you request can traverse that authenticated connection; protect agent tokens and use a trusted network.
+- The Vault stores KeePass-compatible KDBX files; its master password and optional key file are never sent to an MWM agent. Vault edits use revision checks to avoid silently overwriting concurrent changes. Windows machine connection tokens use current-user DPAPI protection. Download a KDBX backup before moving or replacing a vault. Browser autofill, passkeys, hardware challenge-response keys and system-wide Auto-Type are not yet implemented in MWM; keep KeePassXC if you rely on them.
+
+## KeePassXC vault migration
+
+Open **Vault** in MWM, choose **Import KeePassXC KDBX**, select the original `.kdbx` file, then enter its master password and optional key file in the app. MWM verifies it can decrypt the database before saving the encrypted KDBX on the selected machine. Your original file stays untouched. **Download KDBX backup** gives you a standard database you can reopen in KeePassXC. The bundled KDBX library is [KdbxWeb](https://github.com/keeweb/kdbxweb), rebuilt with a patched XML parser, and Argon2 uses [hash-wasm](https://github.com/Daninet/hash-wasm). Their licenses are included beside the bundled scripts.
 
 ## MCP-ARR compatibility
 

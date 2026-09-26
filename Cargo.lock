@@ -2065,6 +2065,7 @@ version = "0.3.0"
 dependencies = [
  "aho-corasick",
  "anyhow",
+ "base64 0.22.1",
  "blake3",
  "getrandom 0.3.4",
  "goblin",

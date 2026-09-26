@@ -32,6 +32,7 @@ pub fn is_mutating(cmd: &str) -> bool {
             | "lab_quarantine" | "lab_quarantine_restore" | "lab_quarantine_delete"
             | "arkana_configure" | "arkana_install" | "arkana_control" | "arkana_tool" | "arkana_analyze"
             | "arr_mcp_configure" | "arr_mcp_call"
+            | "vault_store"
     )
 }
 
@@ -111,6 +112,8 @@ pub fn call(cmd: &str, a: &Value) -> Result<Value, String> {
         "toolkit_network" => ok(toolkit::network()),
         "toolkit_wifi" => ok(toolkit::wifi()),
         "keys_list" => ok(keys::list()),
+        "vault_load" => e(crate::vault::load()),
+        "vault_store" => e(crate::vault::store(&arg::<String>(a, "expectedRevision")?, a.get("blob").ok_or("missing encrypted vault blob")?)),
         // Offline malware triage and the user's own Arkana instance.
         "lab_analyze" => e(crate::lab::analyze(&arg::<String>(a, "path")?)),
         "lab_av_scan" => e(crate::lab::av_scan(&arg::<String>(a, "path")?)),

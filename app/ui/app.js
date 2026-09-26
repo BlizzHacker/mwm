@@ -168,6 +168,7 @@ const PAGES = [
   { sec: "Tech Toolkit" },
   { id: "report", label: "System Report", icon: "report" },
   { id: "keys", label: "Keys & Licenses", icon: "key" },
+  { id: "vault", label: "Vault", icon: "key" },
   { id: "repair", label: "Repair", icon: "wrench" },
   { id: "security", label: "Security", icon: "shield" },
   { id: "lab", label: "Malware Lab", icon: "shield" },

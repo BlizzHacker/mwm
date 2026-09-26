@@ -25,6 +25,9 @@ const FILES: &[(&str, &str, &str)] = &[
     ("cluster.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/cluster.js")),
     ("lab.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/lab.js")),
     ("plugins.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/plugins.js")),
+    ("vendor/kdbxweb.min.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/vendor/kdbxweb.min.js")),
+    ("vendor/argon2.umd.min.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/vendor/argon2.umd.min.js")),
+    ("vault.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/vault.js")),
     ("demo.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/demo.js")),
     ("favicon.svg", "image/svg+xml", include_str!("../../../assets/mwm-logo.svg")),
 ];

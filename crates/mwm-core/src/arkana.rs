@@ -34,12 +34,24 @@ fn file() -> PathBuf {
 }
 
 pub fn settings() -> Settings {
-    std::fs::read_to_string(file()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+    let mut s: Settings = std::fs::read_to_string(file()).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default();
+    #[cfg(windows)]
+    {
+        if let Some(encoded) = s.key.strip_prefix("dpapi:") {
+            s.key = crate::remote::unprotect_token(encoded).unwrap_or_default();
+        } else if !s.key.is_empty() {
+            let _ = save(&s);
+        }
+    }
+    s
 }
 
 fn save(s: &Settings) -> anyhow::Result<()> {
     let p = file();
-    std::fs::write(&p, serde_json::to_string_pretty(s)?)?;
+    let mut saved = s.clone();
+    #[cfg(windows)]
+    if !saved.key.is_empty() { saved.key = format!("dpapi:{}", crate::remote::protect_token(&saved.key)?); }
+    std::fs::write(&p, serde_json::to_string_pretty(&saved)?)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
