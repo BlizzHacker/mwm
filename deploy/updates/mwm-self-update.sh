@@ -35,7 +35,7 @@ if [[ "$(printf '%s\n%s\n' "$current" "${tag#v}" | sort -V | tail -n 1)" != "${t
 fi
 
 tmp=$(mktemp -d "$state/stage.XXXXXXXX")
-trap 'rm -rf "$tmp"' EXIT
+trap 'rm -rf "$tmp"; rm -f "$bin.next"' EXIT
 base="https://github.com/BlizzHacker/mwm/releases/download/$tag"
 curl --fail --silent --show-error --location --retry 3 --max-time 120 "$base/mwm-linux-x86_64" -o "$tmp/mwm-linux-x86_64"
 curl --fail --silent --show-error --location --retry 3 --max-time 30 "$base/SHA256SUMS" -o "$tmp/SHA256SUMS"
@@ -47,13 +47,14 @@ chmod 755 "$tmp/mwm-linux-x86_64"
 test "$("$tmp/mwm-linux-x86_64" --version)" = "mwm ${tag#v}" || { echo "Downloaded binary version mismatch" >&2; exit 1; }
 
 cp -p "$bin" "$state/mwm.previous"
-install -m 0755 "$tmp/mwm-linux-x86_64" "$state/mwm.next"
-mv -f "$state/mwm.next" "$bin"
+install -m 0755 "$tmp/mwm-linux-x86_64" "$bin.next"
+mv -f "$bin.next" "$bin"
 if systemctl restart "$service" && sleep 3 && systemctl is-active --quiet "$service" && test "$("$bin" --version)" = "mwm ${tag#v}"; then
   printf '%s\t%s\t%s\n' "$(date -u +%FT%TZ)" "$current" "${tag#v}" > "$state/last-success"
   echo "Updated $service from $current to ${tag#v}"
 else
-  install -m 0755 "$state/mwm.previous" "$bin"
+  install -m 0755 "$state/mwm.previous" "$bin.next"
+  mv -f "$bin.next" "$bin"
   systemctl restart "$service" || true
   echo "Update failed; restored MWM $current" >&2
   exit 1

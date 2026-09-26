@@ -333,7 +333,7 @@ async function drawLxcUpdatesTab() {
     <div class="row" style="margin:14px 0;justify-content:space-between;flex-wrap:wrap"><span class="muted">Daily checks cover every LXC without an in-container agent. Auto updates run only for selected containers and take a Proxmox snapshot first.</span><button class="btn" id="lxc-update-scan">Scan now</button></div>
     <div class="card" style="padding:0"><div class="scroll"><table class="table"><thead><tr><th>CT</th><th>Container</th><th>Node</th><th>Status</th><th class="num">Updates</th><th>Automatic</th><th></th></tr></thead><tbody>
       ${rows.map((row) => `<tr><td class="mono">${esc(row.vmid)}</td><td class="cell-main">${esc(row.name)}<div class="cell-sub">${esc(arr(row.packages).slice(0, 8).join(", "))}</div></td><td class="muted">${esc(row.node)}</td><td>${statePill(row.state)}</td><td class="num">${num(row.pending)}</td>
-        <td><input type="checkbox" class="cb" data-lxc-auto="${esc(row.vmid)}" ${allowed.has(String(row.vmid)) ? "checked" : ""} ${row.manager !== "apt" && row.state !== "stopped" ? "disabled" : ""}></td>
+        <td><input type="checkbox" class="cb" data-lxc-auto="${esc(row.vmid)}" ${allowed.has(String(row.vmid)) ? "checked" : ""} ${row.manager !== "apt" ? "disabled" : ""}></td>
         <td><button class="btn small" data-lxc-apply="${esc(row.vmid)}" ${row.state !== "ok" || !row.pending ? "disabled" : ""}>Update now</button></td></tr>`).join("")}
     </tbody></table></div></div>`;
   $("#lxc-update-scan").onclick = async () => {
