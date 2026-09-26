@@ -1,7 +1,11 @@
 /* Service plugins discovered across connected Proxmox hosts. */
 "use strict";
 
-const PLUG = { rows: [], error: "", mcp: null, hosts: 0 };
+const PLUG = { rows: [], error: "", mcp: null, mcpSource: "", mcpHost: "", hosts: 0 };
+
+const arrMcpInvoke = (cmd, args = {}) => PLUG.mcpSource === TARGET
+  ? invoke(cmd, args)
+  : localInvoke("remote_call", { id: PLUG.mcpSource, cmd, args });
 
 VIEWS.plugins = async function () {
   $("#top-actions").innerHTML = '<button class="btn" id="plug-refresh">Refresh</button>';
@@ -9,11 +13,13 @@ VIEWS.plugins = async function () {
   $("#page").innerHTML = loading("Discovering services across connected Proxmox nodes...");
   const connections = arr(await localInvoke("conn_list").catch(() => []));
   const sources = [{ id: "", name: "This machine" }, ...connections];
-  const [results, bridge] = await Promise.all([
+  const [results, bridges] = await Promise.all([
     Promise.allSettled(sources.map((source) => source.id
       ? localInvoke("remote_call", { id: source.id, cmd: "plugins_list", args: {} })
       : localInvoke("plugins_list"))),
-    Promise.allSettled([invoke("arr_mcp_status")]).then((items) => items[0]),
+    Promise.allSettled(sources.map((source) => source.id
+      ? localInvoke("remote_call", { id: source.id, cmd: "arr_mcp_status", args: {} })
+      : localInvoke("arr_mcp_status"))),
   ]);
   const seen = new Set(), errors = [];
   PLUG.rows = [];
@@ -30,7 +36,12 @@ VIEWS.plugins = async function () {
   });
   PLUG.rows.sort((a, b) => `${a.label}|${a.node}`.localeCompare(`${b.label}|${b.node}`));
   PLUG.error = errors.join(" · ");
-  PLUG.mcp = bridge.status === "fulfilled" ? bridge.value : { configured: false, reachable: false, error: String(bridge.reason) };
+  const selected = Math.max(0, sources.findIndex((source) => source.id === TARGET));
+  const available = bridges.findIndex((result) => result.status === "fulfilled" && result.value?.reachable);
+  const chosen = available >= 0 ? available : selected;
+  PLUG.mcpSource = sources[chosen].id;
+  PLUG.mcpHost = sources[chosen].name;
+  PLUG.mcp = bridges[chosen].status === "fulfilled" ? bridges[chosen].value : { configured: false, reachable: false, error: String(bridges[chosen].reason) };
   if (current === "plugins") drawPlugins();
 };
 
@@ -54,7 +65,7 @@ function drawArrBridge() {
   const s = PLUG.mcp || {};
   return `<div class="card" style="margin-top:14px"><h3>MCP-ARR connection</h3>
     <p class="muted">Use MCP-ARR alongside MWM's built-in service view. Start its HTTP endpoint on the selected machine; MWM connects through localhost.</p>
-    <div class="row" style="gap:8px;flex-wrap:wrap"><span class="pill ${s.reachable ? "low" : "medium"}">${s.reachable ? "connected" : s.configured ? "offline" : "not connected"}</span><span class="mono muted">${esc(s.url || "127.0.0.1:3000/mcp")}</span></div>
+    <div class="row" style="gap:8px;flex-wrap:wrap"><span class="pill ${s.reachable ? "low" : "medium"}">${s.reachable ? "connected" : s.configured ? "offline" : "not connected"}</span><span class="muted">via ${esc(PLUG.mcpHost)}</span><span class="mono muted">${esc(s.url || "127.0.0.1:3000/mcp")}</span></div>
     ${s.error ? `<p class="muted">${esc(s.error)}</p>` : ""}
     <div class="row" style="margin-top:12px;gap:8px"><button class="btn" id="arr-mcp-connect">${s.configured ? "Change endpoint" : "Connect MCP-ARR"}</button><button class="btn" id="arr-mcp-tools" ${s.reachable ? "" : "disabled"}>Browse tools</button></div></div>`;
 }
@@ -62,12 +73,12 @@ function drawArrBridge() {
 async function connectArrBridge() {
   const url = await ask("Connect MCP-ARR", "Local Streamable HTTP endpoint", PLUG.mcp?.url || "http://127.0.0.1:3000/mcp", "Connect", "Start MCP-ARR with MCP_TRANSPORT=http on this machine. Keep it bound to 127.0.0.1.");
   if (!url) return;
-  await guard(async () => { await invoke("arr_mcp_configure", { url }); toast("MCP-ARR connected."); await VIEWS.plugins(); });
+  await guard(async () => { await arrMcpInvoke("arr_mcp_configure", { url }); toast("MCP-ARR connected."); await VIEWS.plugins(); });
 }
 
 async function showArrTools() {
   await guard(async () => {
-    const tools = arr(await invoke("arr_mcp_tools"));
+    const tools = arr(await arrMcpInvoke("arr_mcp_tools"));
     modal(`<h2>MCP-ARR tools</h2><p class="muted">${tools.length} tools from your local MCP-ARR server. Calling a tool may change your media library; review its arguments first.</p><div class="scroll" style="max-height:58vh">${tools.map((t, i) => `<button class="btn" style="display:block;width:100%;text-align:left;margin:4px 0" data-arr-tool="${i}"><b>${esc(t.name)}</b><br><span class="muted">${esc(t.description || "")}</span></button>`).join("")}</div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-close>Close</button></div>`);
     $$("[data-arr-tool]").forEach((b) => b.onclick = () => runArrTool(tools[+b.dataset.arrTool]));
   });
@@ -84,7 +95,7 @@ function runArrTool(tool) {
     } catch (e) { toast(`Invalid arguments: ${e.message}`, true); return; }
     closeModal();
     await guard(async () => {
-      const result = await invoke("arr_mcp_call", { name: tool.name, args });
+      const result = await arrMcpInvoke("arr_mcp_call", { name: tool.name, args });
       modal(`<h2>${esc(tool.name)} result</h2><pre class="mono wrap" style="max-height:60vh;overflow:auto">${esc(JSON.stringify(result, null, 2))}</pre><button class="btn" data-close>Close</button>`);
     });
   };
