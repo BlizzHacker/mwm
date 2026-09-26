@@ -1,9 +1,9 @@
 # Build a Store MSIX from a Defender-cleared release executable.
-#   .\build-msix.ps1 -Exe <path-to-MoveWeightManager.exe> -Version 4.0.1
+#   .\build-msix.ps1 -Exe <path-to-MoveWeightManager.exe> -Version 4.1.0
 param(
   [Parameter(Mandatory)] [string]$Exe,
   [string]$Icons = "",
-  [string]$Version = "4.0.1",
+  [string]$Version = "4.1.0",
   [string]$Out = ""
 )
 $ErrorActionPreference = "Stop"

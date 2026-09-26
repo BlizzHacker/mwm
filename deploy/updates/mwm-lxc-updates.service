@@ -1,0 +1,13 @@
+[Unit]
+Description=Inventory and optionally update Proxmox LXC packages through MWM
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/usr/bin/pvesh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/mwm-lxc-updates auto --refresh
+TimeoutStartSec=3h
+Nice=15
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

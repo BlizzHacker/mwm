@@ -2036,7 +2036,7 @@ dependencies = [
 
 [[package]]
 name = "mwm-app"
-version = "4.0.1"
+version = "4.1.0"
 dependencies = [
  "anyhow",
  "mwm-core",
@@ -2049,7 +2049,7 @@ dependencies = [
 
 [[package]]
 name = "mwm-cli"
-version = "4.0.1"
+version = "4.1.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2061,7 +2061,7 @@ dependencies = [
 
 [[package]]
 name = "mwm-core"
-version = "4.0.1"
+version = "4.1.0"
 dependencies = [
  "aho-corasick",
  "anyhow",

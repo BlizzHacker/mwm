@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily MWM inventory of all cluster containers
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=30min
+Persistent=true
+Unit=mwm-lxc-updates.service
+
+[Install]
+WantedBy=timers.target

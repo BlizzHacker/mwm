@@ -20,6 +20,7 @@ Geek Squad / Hiren's repair kit** - with one ~4 MB app for Windows, and a single
 | **Uninstaller** | Runs the real uninstaller (UAC-aware), then hunts leftover folders, shortcuts and registry keys. Leftovers go to the Recycle Bin; registry keys are backed up as `.reg` first. Store apps, dpkg/flatpak/snap on Linux |
 | **Startup Manager** | Startup apps, scheduled tasks, third-party services / systemd units - toggled the Task Manager way, never deleted |
 | **Software Updater** | Free, via winget / apt / brew - updates straight from the publisher |
+| **Cluster Updates** | One Proxmox timer inventories APT updates across running LXCs on all nodes without installing an agent inside each guest. Per-container automatic upgrades require explicit opt-in and a successful snapshot. |
 | **Commander** | Dual-pane, keyboard-first file manager (Double Commander / Geek Squad FMOD style): F3 view (text/image/hex), F5 copy, F6 move, F7 mkdir, F8 recycle, search by name/content, compare panes, multi-rename, zip pack/unpack, folder sizes, network drives. Copies run as background jobs with progress, cancel and conflict handling |
 | **Keys & Licenses** | Windows key from firmware (OEM) and decoded from the registry, every license's status, Office 2010/2013 keys, **BitLocker recovery keys**, saved Wi-Fi passwords; SSH host keys, Proxmox subscription, Unraid license, WireGuard on Linux. Show / copy / export |
 | **Vault** | Open, edit and save KeePassXC-compatible KDBX3/4 databases in the desktop or web UI. Groups, entry history, attachments, key files, TOTP, password generation, search, encrypted KDBX backups, machine-key import, and Google/Brave/Edge CSV import. Master credentials remain in the UI process; agents store encrypted KDBX bytes only. |
@@ -35,7 +36,7 @@ Geek Squad / Hiren's repair kit** - with one ~4 MB app for Windows, and a single
 ## Install
 
 ### Windows 10 / 11
-Windows Store submission is in progress. The earlier preview triggered Microsoft Defender on the publisher's PC. The replacement MSIX and executable passed local and CI Defender scans, and the publisher confirmed the Commander right-click menu works in the updated installed Windows app. Store certification is still pending. Use only a published release; no Windows release is available yet.
+Download the latest Windows installer or portable build from [GitHub Releases](https://github.com/BlizzHacker/mwm/releases/latest). The replacement executable and MSIX passed the Microsoft Defender release gate. The publisher confirmed the Commander right-click menu in the installed desktop app. Microsoft Store certification is still pending.
 
 ### Proxmox VE / Debian / Ubuntu
 ```sh
@@ -89,13 +90,32 @@ For Arkana running in an LXC, select the owning PVE node, open **Malware Lab**, 
 
 In MWM, choose that node in the machine switcher, open **Plugins**, click **Connect MCP-ARR**, then **Browse tools**. On a Windows PC, the same page can connect to an MCP-ARR instance running locally even without Proxmox. The bridge accepts loopback endpoints only, because MCP-ARR HTTP mode has no documented access control. MWM's native service status view remains usable without MCP-ARR.
 
+## Scheduled updates
+
+MWM can update its own Linux service from the latest stable GitHub release. It verifies the published SHA256 checksum and the binary version, keeps the previous binary, restarts the service, and rolls back if startup fails. On each Linux host running MWM:
+
+```sh
+sudo sh deploy/updates/install.sh --service mwm-web
+# or: sudo sh deploy/updates/install.sh --service mwm-agent
+```
+
+On one Proxmox node, add `--cluster` to install a daily cluster-wide LXC inventory timer. The scanner checks every running LXC through its owning PVE node, leaves stopped containers alone, and shows results in **Proxmox Cluster → Updates**:
+
+```sh
+sudo sh deploy/updates/install.sh --service mwm-web --cluster
+sudo systemctl start mwm-lxc-updates.service
+sudo systemctl status mwm-lxc-updates.timer
+```
+
+Automatic APT package installation starts disabled for every container. Enable it per container in the Updates tab. MWM snapshots that LXC before upgrading; if the snapshot fails, it skips the upgrade. Only three opted-in containers are upgraded per maintenance run. Docker images, app-specific release channels, Windows VMs, and Proxmox host packages have separate update paths and are not changed by the LXC timer. Review backup coverage before enabling unattended upgrades.
+
 ## Build (everything cross-compiles from Linux)
 ```
 rustup target add x86_64-pc-windows-msvc x86_64-unknown-linux-musl
 cargo install cargo-xwin tauri-cli
 cd app/src-tauri && cargo tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
 cargo build --release --target x86_64-unknown-linux-musl -p mwm-cli
-packaging/linux/build-packages.sh 4.0.1 dist/            # .deb, Unraid .plg, install.sh, SHA256SUMS
+packaging/linux/build-packages.sh 4.1.0 dist/            # .deb, Unraid .plg, install.sh, SHA256SUMS
 ```
 Store package (on Windows with the Windows SDK): `packaging/msix/build-msix.ps1`.
 Layout: `crates/mwm-core` (engine + one command table `api.rs`), `crates/mwm-cli` (`mwm`, incl. `serve`),

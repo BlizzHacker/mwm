@@ -32,7 +32,7 @@ pub fn is_mutating(cmd: &str) -> bool {
             | "lab_quarantine" | "lab_quarantine_restore" | "lab_quarantine_delete"
             | "arkana_configure" | "arkana_connect_lxc" | "arkana_install" | "arkana_control" | "arkana_tool" | "arkana_analyze"
             | "arr_mcp_configure" | "arr_mcp_call"
-            | "lxc_fs_write" | "lxc_fs_mkdir" | "lxc_fs_delete"
+            | "lxc_fs_write" | "lxc_fs_mkdir" | "lxc_fs_delete" | "lxc_updates_policy_set" | "lxc_updates_scan" | "lxc_updates_apply"
             | "vault_store"
     )
 }
@@ -138,6 +138,11 @@ pub fn call(cmd: &str, a: &Value) -> Result<Value, String> {
         // Servers (Proxmox / Unraid / ZFS / Docker / SMART)
         "server_info" => e(server::info_on(&arg::<Option<String>>(a, "node")?.unwrap_or_default())),
         "pve_overview" => e(crate::pve::overview()),
+        "lxc_updates_report" => e(crate::lxc_updates::report()),
+        "lxc_updates_policy" => e(crate::lxc_updates::policy()),
+        "lxc_updates_policy_set" => e(crate::lxc_updates::set_policy(&arg::<Vec<String>>(a, "ids")?)),
+        "lxc_updates_scan" => e(crate::lxc_updates::scan()),
+        "lxc_updates_apply" => e(crate::lxc_updates::apply(&arg::<String>(a, "node")?, &arg::<String>(a, "vmid")?)),
         "pve_guest" => e(crate::pve::guest(&arg::<String>(a, "node")?, &arg::<String>(a, "kind")?, &arg::<String>(a, "vmid")?)),
         "pve_op" => e(crate::pve::guest_op(&arg::<String>(a, "node")?, &arg::<String>(a, "kind")?, &arg::<String>(a, "vmid")?, &arg::<String>(a, "op")?, a.get("params").unwrap_or(&Value::Null))),
         "pve_task_log" => e(crate::pve::task_log(&arg::<String>(a, "node")?, &arg::<String>(a, "upid")?)),
