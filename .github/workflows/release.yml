@@ -50,6 +50,7 @@ jobs:
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
+          overwrite_files: true
           files: |
             target/**/bundle/dmg/*.dmg
             target/**/bundle/appimage/*.AppImage

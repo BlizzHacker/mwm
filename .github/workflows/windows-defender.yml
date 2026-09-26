@@ -24,6 +24,13 @@ jobs:
           node --check app/ui/vault.js
       - name: Test Windows core
         run: cargo test -p mwm-core --lib
+      - name: Read release version
+        shell: pwsh
+        run: |
+          $metadata = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
+          $version = ($metadata.packages | Where-Object { $_.name -eq 'mwm-app' }).version
+          if (-not $version) { throw 'Could not read the MWM app version' }
+          "MWM_VERSION=$version" >> $env:GITHUB_ENV
       - name: Build Windows desktop executable
         run: cargo build --release -p mwm-app
       - name: Scan build with Microsoft Defender
@@ -52,11 +59,11 @@ jobs:
           Write-Output 'Microsoft Defender scan passed'
       - name: Build Store MSIX after clean scan
         shell: pwsh
-        run: .\packaging\msix\build-msix.ps1 -Exe "$env:GITHUB_WORKSPACE\target\release\MoveWeightManager.exe" -Version "0.3.0"
+        run: .\packaging\msix\build-msix.ps1 -Exe "$env:GITHUB_WORKSPACE\target\release\MoveWeightManager.exe" -Version "$env:MWM_VERSION"
       - name: Scan Store MSIX with Microsoft Defender
         shell: pwsh
         run: |
-          $candidate = Join-Path $env:GITHUB_WORKSPACE 'dist\msix\0.3.0\MWM_0.3.0_x64.msix'
+          $candidate = Join-Path $env:GITHUB_WORKSPACE ('dist\msix\{0}\MWM_{0}_x64.msix' -f $env:MWM_VERSION)
           if (-not (Test-Path -LiteralPath $candidate)) { throw 'MSIX was not produced' }
           Start-MpScan -ScanType CustomScan -ScanPath $candidate
           if (-not (Test-Path -LiteralPath $candidate)) { throw 'Microsoft Defender blocked or quarantined the MSIX' }
@@ -68,5 +75,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: mwm-store-candidate
-          path: dist/msix/0.3.0/MWM_0.3.0_x64.msix
+          path: |
+            dist/msix/*/MWM_*_x64.msix
+            target/release/MoveWeightManager.exe
           if-no-files-found: error
