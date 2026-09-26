@@ -95,7 +95,7 @@ rustup target add x86_64-pc-windows-msvc x86_64-unknown-linux-musl
 cargo install cargo-xwin tauri-cli
 cd app/src-tauri && cargo tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
 cargo build --release --target x86_64-unknown-linux-musl -p mwm-cli
-packaging/linux/build-packages.sh 0.3.0 dist/            # .deb, Unraid .plg, install.sh, SHA256SUMS
+packaging/linux/build-packages.sh 4.0.0 dist/            # .deb, Unraid .plg, install.sh, SHA256SUMS
 ```
 Store package (on Windows with the Windows SDK): `packaging/msix/build-msix.ps1`.
 Layout: `crates/mwm-core` (engine + one command table `api.rs`), `crates/mwm-cli` (`mwm`, incl. `serve`),

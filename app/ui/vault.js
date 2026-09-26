@@ -80,7 +80,7 @@ async function vaultSave() {
 VIEWS.vault = async function () {
   if (VAULT.db && VAULT.scope !== TARGET) { VAULT.db = null; VAULT.blob = null; }
   $("#top-actions").innerHTML = VAULT.db
-    ? `<button class="btn" id="v-csv">Import browser CSV</button><button class="btn" id="v-keys">Import machine keys</button><button class="btn" id="v-backup">Download KDBX backup</button><button class="btn" id="v-lock">Lock</button><button class="btn primary" id="v-add">New entry</button>`
+    ? `<button class="btn" id="v-review">Review duplicates</button><button class="btn" id="v-csv">Import browser CSV</button><button class="btn" id="v-keys">Import machine keys</button><button class="btn" id="v-backup">Download KDBX backup</button><button class="btn" id="v-lock">Lock</button><button class="btn primary" id="v-add">New entry</button>`
     : "";
   if (VAULT.db) return vaultDraw();
   $("#page").innerHTML = loading("Checking encrypted vault...");
@@ -181,11 +181,60 @@ function vaultDraw() {
   $("#v-newgroup").onclick = async () => { const name = await ask("New group", "Group name"); if (name?.trim()) { VAULT.db.createGroup(VAULT.db.getDefaultGroup(), name.trim()); vaultSave(); } };
   $$("[data-v-entry]").forEach((el) => (el.onclick = () => { VAULT.selected = el.dataset.vEntry; vaultDraw(); }));
   $("#v-add").onclick = () => vaultEdit(null);
+  $("#v-review").onclick = vaultReviewDuplicates;
   $("#v-csv").onclick = vaultImportBrowserPrompt;
   $("#v-keys").onclick = vaultImportMachineKeys;
   $("#v-lock").onclick = vaultLock;
   $("#v-backup").onclick = vaultBackup;
   if (selected) vaultBindDetail(selected);
+}
+function vaultSite(url) {
+  try { return new URL(url).hostname.toLowerCase().replace(/^www\./, "") || url.trim().toLowerCase(); }
+  catch { return url.trim().toLowerCase(); }
+}
+function vaultAudit() {
+  const entries = vaultGroups().flatMap((group) => group.entries);
+  const logins = new Map(), overlaps = new Map(), exact = new Map();
+  for (const entry of entries) {
+    const site = vaultSite(vf(entry, "URL")), user = vf(entry, "UserName").trim().toLowerCase();
+    const pass = vf(entry, "Password");
+    if (site && user && pass) {
+      const identity = JSON.stringify([site, user]);
+      const loginRows = logins.get(identity) || []; loginRows.push(entry); logins.set(identity, loginRows);
+      const variant = JSON.stringify([site, user, pass]);
+      const overlapRows = overlaps.get(variant) || []; overlapRows.push(entry); overlaps.set(variant, overlapRows);
+    }
+    if (!entry.parentGroup?.name?.startsWith("Browser passwords - ") || entry.history.length || entry.binaries.size) continue;
+    const fields = [...entry.fields].map(([name, value]) => [name, value instanceof VK().ProtectedValue ? value.getText() : String(value || "")]);
+    fields.sort(([a], [b]) => a.localeCompare(b));
+    const fingerprint = JSON.stringify(fields);
+    const copies = exact.get(fingerprint) || []; copies.push(entry); exact.set(fingerprint, copies);
+  }
+  const conflicts = [...logins.entries()].filter(([, rows]) => new Set(rows.map((entry) => vf(entry, "Password"))).size > 1);
+  const duplicateGroups = [...overlaps.values()].filter((rows) => rows.length > 1);
+  const exactGroups = [...exact.values()].filter((rows) => rows.length > 1);
+  return { conflicts, duplicateGroups, exactGroups, removable: exactGroups.reduce((total, rows) => total + rows.length - 1, 0) };
+}
+function vaultReviewDuplicates() {
+  if (!VAULT.db || VAULT.scope !== TARGET) return;
+  const audit = vaultAudit();
+  const conflicts = audit.conflicts.slice(0, 80).map(([identity, rows]) => {
+    const [site, user] = JSON.parse(identity);
+    return `<div class="note" style="margin:5px 0"><b>${esc(site)}</b> · ${esc(user)} <span class="muted">${rows.length} entries · ${esc([...new Set(rows.map((e) => e.parentGroup?.name || ""))].join(", "))}</span></div>`;
+  }).join("");
+  modal(`<h2>Review vault duplicates</h2><p class="muted">${audit.duplicateGroups.length} login/password groups appear more than once. ${audit.removable} browser entries match another entry in every field and have no attachments or history. ${audit.conflicts.length} site/username groups have different saved passwords; MWM leaves those untouched.</p>
+    <div class="row" style="flex-wrap:wrap;margin:12px 0"><button class="btn ${audit.conflicts.length ? "medium" : ""}" id="vr-conflicts">Review password conflicts (${audit.conflicts.length})</button><button class="btn danger" id="vr-clean" ${audit.removable ? "" : "disabled"}>Move exact browser copies to recycle bin (${audit.removable})</button></div>
+    <div id="vr-list" class="scroll" style="max-height:42vh;display:none">${conflicts || '<div class="muted">No conflicting passwords found.</div>'}${audit.conflicts.length > 80 ? `<div class="muted">Showing 80 of ${audit.conflicts.length} groups.</div>` : ""}</div>
+    <p class="muted">Check different-password entries yourself; the newest saved value is not always the right one. Download a KDBX backup before removing copies.</p><div class="row" style="justify-content:flex-end"><button class="btn primary" data-close>Done</button></div>`);
+  $("#modal-card").classList.add("wide");
+  $("#vr-conflicts").onclick = () => { const list = $("#vr-list"); list.style.display = list.style.display === "none" ? "block" : "none"; };
+  $("#vr-clean").onclick = async () => {
+    const count = audit.removable;
+    if (!(await choose("Remove exact browser copies?", `<p class="muted">Move ${count} truly identical browser entries to the KDBX recycle bin. Entries with different passwords, notes, titles, URLs, attachments, or history stay in the vault.</p>`, [["go", "Move copies to recycle bin", "danger"]]))) return;
+    if (!VAULT.db || VAULT.scope !== TARGET) return toast("Vault changed; review again.", true);
+    for (const copies of audit.exactGroups) for (const entry of copies.slice(1)) VAULT.db.remove(entry);
+    if (await vaultSave()) toast(`${count} exact browser copies moved to the KDBX recycle bin.`);
+  };
 }
 function vaultParseCsv(source) {
   const rows = [], row = [];

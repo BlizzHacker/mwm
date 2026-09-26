@@ -174,7 +174,7 @@ async function guestPanel(node, kind, vmid) {
     <div class="row" style="flex-wrap:wrap;margin:12px 0">
       ${running ? `<button class="btn small" data-g="shutdown">Shut down</button><button class="btn small" data-g="reboot">Reboot</button><button class="btn small danger" data-g="stop">Force stop</button>${kind === "qemu" ? '<button class="btn small" data-g="suspend">Pause</button>' : ""}` : st.status === "paused" ? '<button class="btn small primary" data-g="resume">Resume</button>' : '<button class="btn small primary" data-g="start">Start</button>'}
       <button class="btn small" id="gp-snap">Snapshot...</button><button class="btn small" id="gp-bk">Back up now...</button><button class="btn small" id="gp-mg">Migrate...</button>
-      ${kind === "lxc" && running ? '<button class="btn small" id="gp-dk">Docker...</button>' : ""}</div>
+      ${kind === "lxc" && running ? '<button class="btn small" id="gp-dk">Docker...</button><button class="btn small" id="gp-files">Files...</button>' : ""}</div>
     <div class="grid g2">
       <div class="card"><div class="label">Live</div>${kv([
         ["CPU", running ? `${((st.cpu || 0) * 100).toFixed(1)}% of ${st.cpus || cfg.cores || "?"} cores` : "-"],
@@ -206,6 +206,7 @@ async function guestPanel(node, kind, vmid) {
   $("#gp-bk").onclick = () => backupDialog(node, kind, vmid, name, arr(d.backup_storages));
   $("#gp-mg").onclick = () => migrateDialog(node, kind, vmid, name, running);
   $("#gp-dk") && ($("#gp-dk").onclick = () => dockerPanel(node, vmid, name));
+  $("#gp-files") && ($("#gp-files").onclick = () => lxcFilePanel(node, vmid, "/"));
   $$("[data-rb]").forEach((b) => (b.onclick = async () => {
     if (!(await confirmOp(`Roll back ${esc(name)} to ${esc(b.dataset.rb)}?`, "<p class=\"muted\">Everything that changed since that snapshot is lost. The guest may be stopped during rollback.</p>", "Roll back", true))) return;
     await pveOp(node, kind, vmid, "rollback", { name: b.dataset.rb }, `Rollback ${name}`);

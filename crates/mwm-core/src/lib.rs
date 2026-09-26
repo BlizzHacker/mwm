@@ -15,6 +15,7 @@ pub mod files;
 pub mod jobs;
 pub mod keys;
 pub mod lab;
+pub mod lxc_fs;
 pub mod mcp_arr;
 pub mod plugins;
 pub mod fsutil;

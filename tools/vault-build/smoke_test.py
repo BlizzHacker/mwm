@@ -55,6 +55,23 @@ with sync_playwright() as p:
     assert page.locator("#v-password").inner_text() == "synthetic, secret"
     assert "first line\nsecond line" in page.locator("#v-detail").inner_text()
     assert page.evaluate("!!VAULT.db.getDefaultGroup().groups.find(g => g.name === 'Browser passwords - Brave')")
+    audit = page.evaluate("""() => {
+      const root = VAULT.db.getDefaultGroup();
+      const brave = root.groups.find(g => g.name === 'Browser passwords - Brave');
+      const edge = VAULT.db.createGroup(root, 'Browser passwords - Edge');
+      const google = VAULT.db.createGroup(root, 'Browser passwords - Google');
+      const original = brave.entries.find(e => e.fields.get('Title') === 'Example, site');
+      const copy = VAULT.db.createEntry(edge);
+      for (const [key, value] of original.fields) copy.fields.set(key, value);
+      const conflict = VAULT.db.createEntry(google);
+      for (const [key, value] of original.fields) conflict.fields.set(key, value);
+      conflict.fields.set('Password', kdbxweb.ProtectedValue.fromString('different synthetic secret'));
+      const review = vaultAudit();
+      const removable = review.removable, conflicting = review.conflicts.length;
+      for (const copies of review.exactGroups) for (const entry of copies.slice(1)) VAULT.db.remove(entry);
+      return { removable, conflicting, remaining: vaultAudit().removable };
+    }""")
+    assert audit == {"removable": 1, "conflicting": 1, "remaining": 0}, audit
     parsed = page.evaluate("vaultParseCsv('name,url,username,password\\nA,https://x.test,u,p\\n')")
     assert len(parsed) == 1 and parsed[0]["password"] == "p"
     page.get_by_role("button", name="Lock").click()
@@ -68,7 +85,7 @@ with sync_playwright() as p:
     }""")
     assert totp == "94287082", totp
     assert not errors, errors
-    print("KDBX create, browser CSV import, save, lock, reopen, and entry round trip passed")
+    print("KDBX create, browser CSV import, duplicate review, lock, reopen, and entry round trip passed")
     cli = r"C:\Program Files\KeePassXC\keepassxc-cli.exe"
     if os.path.exists(cli):
         with tempfile.TemporaryDirectory(prefix="mwm-kdbx-smoke-") as work:

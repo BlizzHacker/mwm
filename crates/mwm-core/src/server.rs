@@ -327,7 +327,7 @@ fn node_ip(node: &str) -> Option<String> {
 }
 
 /// Run a fixed `sh -c` script inside LXC `vmid` on `node`.
-fn in_guest(node: &str, vmid: &str, script: &str) -> anyhow::Result<(i32, String)> {
+pub(crate) fn in_guest(node: &str, vmid: &str, script: &str) -> anyhow::Result<(i32, String)> {
     safe_token(node)?;
     if vmid.is_empty() || !vmid.chars().all(|c| c.is_ascii_digit()) {
         anyhow::bail!("bad container id {vmid}");
@@ -339,6 +339,20 @@ fn in_guest(node: &str, vmid: &str, script: &str) -> anyhow::Result<(i32, String
     // Script travels as one single-quoted argument of the remote pct command.
     let remote = format!("pct exec {vmid} -- sh -c '{}'", script.replace('\'', r"'\''"));
     util::run_capture("ssh", &["-o", "BatchMode=yes", "-o", "ConnectTimeout=6", &format!("root@{ip}"), &remote])
+}
+
+/// Like `in_guest`, but streams `input` to the script's stdin (file uploads).
+pub(crate) fn in_guest_input(node: &str, vmid: &str, script: &str, input: &[u8]) -> anyhow::Result<(i32, String)> {
+    safe_token(node)?;
+    if vmid.is_empty() || !vmid.chars().all(|c| c.is_ascii_digit()) {
+        anyhow::bail!("bad container id {vmid}");
+    }
+    if node.eq_ignore_ascii_case(&local_node()) {
+        return util::run_input("pct", &["exec", vmid, "--", "sh", "-c", script], input);
+    }
+    let ip = node_ip(node).ok_or_else(|| anyhow::anyhow!("node {node} is not in this cluster"))?;
+    let remote = format!("pct exec {vmid} -- sh -c '{}'", script.replace('\'', r"'\''"));
+    util::run_input("ssh", &["-o", "BatchMode=yes", "-o", "ConnectTimeout=6", &format!("root@{ip}"), &remote], input)
 }
 
 const SEP: &str = "---MWM-SPLIT---";

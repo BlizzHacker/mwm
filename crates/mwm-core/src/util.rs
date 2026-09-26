@@ -85,6 +85,30 @@ pub fn norm(s: &str) -> String {
     s.chars().filter(|c| c.is_alphanumeric()).flat_map(|c| c.to_lowercase()).collect()
 }
 
+/// Run `program`, feeding `input` on stdin (large payloads must not go in argv:
+/// Linux caps a single argument at 128 KiB).
+pub fn run_input(program: &str, args: &[&str], input: &[u8]) -> anyhow::Result<(i32, String)> {
+    use std::io::Write;
+    let mut child = cmd(program)
+        .args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+    {
+        let mut stdin = child.stdin.take().ok_or_else(|| anyhow::anyhow!("no stdin"))?;
+        stdin.write_all(input)?;
+    }
+    let out = child.wait_with_output()?;
+    let mut text = String::from_utf8_lossy(&out.stdout).to_string();
+    let err = String::from_utf8_lossy(&out.stderr);
+    if !err.trim().is_empty() {
+        text.push('\n');
+        text.push_str(&err);
+    }
+    Ok((out.status.code().unwrap_or(-1), text))
+}
+
 pub fn run_capture(program: &str, args: &[&str]) -> anyhow::Result<(i32, String)> {
     let out = cmd(program).args(args).output()?;
     let mut text = String::from_utf8_lossy(&out.stdout).to_string();

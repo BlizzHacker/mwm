@@ -32,6 +32,7 @@ pub fn is_mutating(cmd: &str) -> bool {
             | "lab_quarantine" | "lab_quarantine_restore" | "lab_quarantine_delete"
             | "arkana_configure" | "arkana_connect_lxc" | "arkana_install" | "arkana_control" | "arkana_tool" | "arkana_analyze"
             | "arr_mcp_configure" | "arr_mcp_call"
+            | "lxc_fs_write" | "lxc_fs_mkdir" | "lxc_fs_delete"
             | "vault_store"
     )
 }
@@ -140,6 +141,11 @@ pub fn call(cmd: &str, a: &Value) -> Result<Value, String> {
         "pve_guest" => e(crate::pve::guest(&arg::<String>(a, "node")?, &arg::<String>(a, "kind")?, &arg::<String>(a, "vmid")?)),
         "pve_op" => e(crate::pve::guest_op(&arg::<String>(a, "node")?, &arg::<String>(a, "kind")?, &arg::<String>(a, "vmid")?, &arg::<String>(a, "op")?, a.get("params").unwrap_or(&Value::Null))),
         "pve_task_log" => e(crate::pve::task_log(&arg::<String>(a, "node")?, &arg::<String>(a, "upid")?)),
+        "lxc_fs_list" => e(crate::lxc_fs::list(&arg::<String>(a, "node")?, &arg::<String>(a, "vmid")?, &arg::<String>(a, "dir")?)),
+        "lxc_fs_read" => e(crate::lxc_fs::read(&arg::<String>(a, "node")?, &arg::<String>(a, "vmid")?, &arg::<String>(a, "path")?)),
+        "lxc_fs_write" => e(crate::lxc_fs::write(&arg::<String>(a, "node")?, &arg::<String>(a, "vmid")?, &arg::<String>(a, "path")?, &arg::<String>(a, "data")?)),
+        "lxc_fs_mkdir" => e(crate::lxc_fs::mkdir(&arg::<String>(a, "node")?, &arg::<String>(a, "vmid")?, &arg::<String>(a, "path")?)),
+        "lxc_fs_delete" => e(crate::lxc_fs::delete(&arg::<String>(a, "node")?, &arg::<String>(a, "vmid")?, &arg::<String>(a, "path")?)),
         "deploy_node" => e(server::deploy_node(&arg::<String>(a, "node")?)),
         "server_action" => e(server::action(&arg::<String>(a, "action")?, &arg::<Option<String>>(a, "target")?.unwrap_or_default())),
         "guest_docker" => e(server::guest_docker(&arg::<String>(a, "node")?, &arg::<String>(a, "vmid")?)),
