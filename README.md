@@ -22,14 +22,14 @@ Geek Squad / Hiren's repair kit** - with one ~4 MB app for Windows, and a single
 | **Software Updater** | Free, via winget / apt / brew - updates straight from the publisher |
 | **Commander** | Dual-pane, keyboard-first file manager (Double Commander / Geek Squad FMOD style): F3 view (text/image/hex), F5 copy, F6 move, F7 mkdir, F8 recycle, search by name/content, compare panes, multi-rename, zip pack/unpack, folder sizes, network drives. Copies run as background jobs with progress, cancel and conflict handling |
 | **Keys & Licenses** | Windows key from firmware (OEM) and decoded from the registry, every license's status, Office 2010/2013 keys, **BitLocker recovery keys**, saved Wi-Fi passwords; SSH host keys, Proxmox subscription, Unraid license, WireGuard on Linux. Show / copy / export |
-| **Vault** | Open, edit and save KeePassXC-compatible KDBX3/4 databases in the desktop or web UI. Groups, entry history, attachments, key files, TOTP, password generation, search, encrypted KDBX backups and machine-key import. Master credentials remain in the UI process; agents store encrypted KDBX bytes only. |
+| **Vault** | Open, edit and save KeePassXC-compatible KDBX3/4 databases in the desktop or web UI. Groups, entry history, attachments, key files, TOTP, password generation, search, encrypted KDBX backups, machine-key import, and Google/Brave/Edge CSV import. Master credentials remain in the UI process; agents store encrypted KDBX bytes only. |
 | **Repair** | SFC, DISM RestoreHealth + component cleanup, chkdsk, Windows Update reset, restore point, clock resync, icon cache, DNS flush, IP renew, network stack reset, print spooler, Defender update / quick / full scan, battery + energy reports, memory test. Linux: fix broken packages, remove old kernels, Docker cleanup, ZFS scrub, SMART self-tests, journal vacuum. Live output, keeps running across pages |
 | **System Report** | Maker/model/serial, BIOS, board, CPU, RAM sticks, GPUs, activation, disk health (temp, wear, hours, errors), battery - exportable HTML report for a customer or a ticket |
 | **Security** | Defender, firewall, UAC, BitLocker, threat history |
 | **Network** | Router → internet → DNS → HTTPS test with a plain-English verdict and one-click fixes |
 | **Crashes & Events** | Blue screens, hard resets, minidumps and a searchable error log |
 | **Server / NAS** | Proxmox cluster guests (start / shut down / reboot on any node), storage, ZFS pools + scrub, SMART for every disk, Docker containers, Unraid array, failed services, kernels |
-| **Service plugins** | Discover Sonarr, Radarr, Lidarr, Prowlarr, RomMarr, Maintainerr and CleanUpArr on the owning Proxmox node. Optional local MCP-ARR bridge exposes the upstream MCP tools in the same desktop/web UI |
+| **Service plugins** | Discover ARR services, qBittorrent, Jellyfin, Plex, RomM, NZBGet, Seerr, Tautulli, Komga and FlareSolverr across connected Proxmox nodes. MWM runs on the PVE nodes and uses `pct` to inspect their LXCs. Optional local MCP-ARR bridge exposes upstream MCP tools in the same desktop/web UI. |
 | Also | Duplicate Finder (BLAKE3), Disk Analyzer, Performance (heavy processes), Drivers (inventory - updates only via Windows Update, never third-party mirrors), Shredder + free-space wipe, System Tools launcher |
 
 ## Install
@@ -77,9 +77,15 @@ mwm --json <command>     machine-readable output
 
 Open **Vault** in MWM, choose **Import KeePassXC KDBX**, select the original `.kdbx` file, then enter its master password and optional key file in the app. MWM verifies it can decrypt the database before saving the encrypted KDBX on the selected machine. Your original file stays untouched. **Download KDBX backup** gives you a standard database you can reopen in KeePassXC. The bundled KDBX library is [KdbxWeb](https://github.com/keeweb/kdbxweb), rebuilt with a patched XML parser, and Argon2 uses [hash-wasm](https://github.com/Daninet/hash-wasm). Their licenses are included beside the bundled scripts.
 
+After unlocking the vault, **Import browser CSV** accepts exports from Google Password Manager, Brave, and Microsoft Edge. Export through the browser's own password settings, select the CSV in MWM, and review the entry count before merging. The CSV is parsed inside the desktop WebView/browser and is never sent to an MWM agent; only the resulting encrypted KDBX is saved. Repeating an import updates matching entries with KDBX history. Delete the plaintext CSV after confirming the imported entries. Windows sign-in passwords and passkeys cannot be exported through this flow; **Import machine keys** handles readable license, BitLocker, and network key records instead.
+
 ## MCP-ARR compatibility
 
 MWM has its own Proxmox service discovery and can also connect to [MCP-ARR](https://github.com/aplaceforallmystuff/mcp-arr). On a Proxmox node that owns Sonarr/Radarr/Lidarr/Prowlarr, run `sudo python3 deploy/arr/install.py` from an MWM checkout to install MCP-ARR on `127.0.0.1:3000/mcp`. The installer reads each running service's API key from its LXC, writes a root-only `/etc/mwm/mcp-arr.env`, and starts the upstream container. Docker administrators can inspect container environment and should be trusted with these keys.
+
+The **Plugins** page queries every connected PVE agent from one desktop or manager install and routes container actions to the owning node. qBittorrent's Web UI port is read from its LXC configuration; when the Web UI requires a login, MWM reports that state and opens the service login without extracting or bypassing its password. The **Proxmox Cluster** page lists all LXCs and VMs, including services without a dedicated plugin.
+
+For Arkana running in an LXC, select the owning PVE node, open **Malware Lab**, and choose **Connect Arkana LXC**. Enter the LXC ID. MWM reads that LXC's existing API key through `pct`, connects to its MCP endpoint, and copies analysis samples into its mounted samples folder through `pct push`. The agent stays on the PVE node.
 
 In MWM, choose that node in the machine switcher, open **Plugins**, click **Connect MCP-ARR**, then **Browse tools**. On a Windows PC, the same page can connect to an MCP-ARR instance running locally even without Proxmox. The bridge accepts loopback endpoints only, because MCP-ARR HTTP mode has no documented access control. MWM's native service status view remains usable without MCP-ARR.
 

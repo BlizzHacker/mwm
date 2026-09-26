@@ -27,6 +27,9 @@ pub struct Settings {
     /// Install folder when MWM installed it.
     pub dir: String,
     pub managed: bool,
+    /// Arkana running inside an LXC owned by this Proxmox node.
+    #[serde(default)]
+    pub lxc_vmid: String,
 }
 
 fn file() -> PathBuf {
@@ -79,7 +82,9 @@ fn default_dir() -> PathBuf {
 /// What the UI needs to decide between "Install", "Connect" and "Analyze".
 pub fn status() -> Value {
     let s = settings();
-    let running = if s.managed && !s.dir.is_empty() {
+    let running = if !s.lxc_vmid.is_empty() {
+        util::run_capture("pct", &["exec", &s.lxc_vmid, "--", "docker", "ps", "--filter", "name=arkana", "--format", "{{.Names}} {{.Status}}"]).map(|(_, o)| o.trim().to_string()).unwrap_or_default()
+    } else if s.managed && !s.dir.is_empty() {
         util::run_capture("docker", &["ps", "--filter", "name=arkana", "--format", "{{.Names}} {{.Status}}"]).map(|(_, o)| o.trim().to_string()).unwrap_or_default()
     } else {
         String::new()
@@ -92,11 +97,13 @@ pub fn status() -> Value {
         "samples_dir": s.samples_dir,
         "dir": s.dir,
         "managed": s.managed,
+        "lxc_vmid": s.lxc_vmid,
         "container": running,
         "reachable": reachable,
         "docker": have("docker"),
         "compose": compose_ok(),
         "git": have("git"),
+        "pve": util::run_capture("pct", &["list"]).map(|(code, _)| code == 0).unwrap_or(false),
         "platform": std::env::consts::OS,
         "default_dir": default_dir().to_string_lossy(),
     })
@@ -120,6 +127,31 @@ pub fn configure(url: &str, key: &str, samples_dir: &str) -> anyhow::Result<Valu
     s.url = u;
     s.key = effective_key;
     s.samples_dir = samples_dir.trim().into();
+    s.lxc_vmid.clear();
+    save(&s)?;
+    Ok(status())
+}
+
+/// Connect to Arkana inside an LXC on this Proxmox node. MWM stays on the
+/// Proxmox host: pct reads the LXC's existing key and copies samples there.
+pub fn connect_lxc(vmid: &str) -> anyhow::Result<Value> {
+    if vmid.is_empty() || vmid.len() > 6 || !vmid.bytes().all(|b| b.is_ascii_digit()) {
+        bail!("enter a numeric LXC ID");
+    }
+    let (_, state) = util::run_capture("pct", &["status", vmid])?;
+    if !state.contains("running") { bail!("LXC {vmid} is not running on this Proxmox node"); }
+    let (_, ips) = util::run_capture("pct", &["exec", vmid, "--", "hostname", "-I"])?;
+    let ip = ips.split_whitespace().find(|v| v.parse::<std::net::Ipv4Addr>().is_ok())
+        .context("Arkana LXC has no IPv4 address")?;
+    let (_, env) = util::run_capture("pct", &["exec", vmid, "--", "cat", "/opt/arkana/.env"])?;
+    let key = env.lines().filter_map(|line| line.split_once('=')).find(|(name, _)| *name == "ARKANA_API_KEY")
+        .map(|(_, value)| value.trim().trim_matches(['"', '\'']))
+        .filter(|value| !value.is_empty()).context("Arkana API key is missing in the LXC")?;
+    let url = [8092, 8082].into_iter().map(|port| format!("http://{ip}:{port}/mcp"))
+        .find(|url| McpClient::connect(url, key).is_ok())
+        .context("Arkana MCP is not responding from the Proxmox node; check its LXC proxy or published port")?;
+    let s = Settings { url, key: key.into(), samples_dir: "/opt/arkana/samples".into(),
+        dir: "/opt/arkana".into(), managed: true, lxc_vmid: vmid.into() };
     save(&s)?;
     Ok(status())
 }
@@ -231,7 +263,7 @@ pub fn install(repo: &str, dir: &str, lan: bool) -> u64 {
             }
             std::thread::sleep(Duration::from_secs(2));
         }
-        save(&Settings { url, key, samples_dir: dir.join("samples").to_string_lossy().into(), dir: dir.to_string_lossy().into(), managed: true })?;
+        save(&Settings { url, key, samples_dir: dir.join("samples").to_string_lossy().into(), dir: dir.to_string_lossy().into(), managed: true, lxc_vmid: String::new() })?;
         if !ok {
             bail!("Arkana started but is not answering yet - check `docker compose logs` in {}", dir.display());
         }
@@ -244,6 +276,35 @@ pub fn control(action: &str) -> anyhow::Result<Value> {
     let s = settings();
     if !s.managed || s.dir.is_empty() {
         bail!("this Arkana was not installed by MWM - manage it where it runs");
+    }
+    if !s.lxc_vmid.is_empty() {
+        let vmid = s.lxc_vmid.clone();
+        if action == "update" {
+            let id = jobs::start("arkana", "Update Arkana in LXC", "lab", move |job| {
+                let mut c = util::cmd("pct");
+                c.args(["exec", &vmid, "--", "git", "-C", "/opt/arkana", "pull", "--ff-only"]);
+                stream(job, c)?;
+                for step in ["build", "up"] {
+                    let mut c = util::cmd("pct");
+                    c.args(["exec", &vmid, "--", "docker", "compose", "-f", "/opt/arkana/docker-compose.yml",
+                        "-f", "/opt/arkana/docker-compose.override.yml", "--project-directory", "/opt/arkana", step]);
+                    if step == "up" { c.args(["-d", "arkana-http"]); } else { c.arg("arkana-http"); }
+                    stream(job, c)?;
+                }
+                Ok("Arkana updated in LXC".into())
+            });
+            return Ok(json!({"job": id}));
+        }
+        let verb = match action { "start" => "up", "stop" => "stop", "restart" => "restart", "logs" => "logs", other => bail!("unknown action {other}") };
+        let mut c = util::cmd("pct");
+        c.args(["exec", &vmid, "--", "docker", "compose", "-f", "/opt/arkana/docker-compose.yml",
+            "-f", "/opt/arkana/docker-compose.override.yml", "--project-directory", "/opt/arkana", verb]);
+        if action == "start" { c.args(["-d", "arkana-http"]); }
+        else if action == "logs" { c.args(["--tail", "120", "arkana-http"]); }
+        else { c.arg("arkana-http"); }
+        let out = c.output()?;
+        let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        return Ok(json!({"ok": out.status.success(), "output": text.lines().rev().take(150).collect::<Vec<_>>().into_iter().rev().collect::<Vec<_>>().join("\n")}));
     }
     let args: Vec<&str> = match action {
         "start" => vec!["compose", "up", "-d", "arkana-http"],
@@ -395,7 +456,12 @@ pub fn analyze(path: &str) -> anyhow::Result<u64> {
     Ok(jobs::start("arkana", &format!("Arkana: {name}"), "lab", move |job| {
         let sample_name = format!("mwm-{}-{safe}", crate::web::random_hex(8));
         let dest = Path::new(&s.samples_dir).join(&sample_name);
-        std::fs::copy(&src, &dest).with_context(|| format!("copy into {}", s.samples_dir))?;
+        if s.lxc_vmid.is_empty() {
+            std::fs::copy(&src, &dest).with_context(|| format!("copy into {}", s.samples_dir))?;
+        } else {
+            let status = util::cmd("pct").args(["push", &s.lxc_vmid, &src.to_string_lossy(), &dest.to_string_lossy()]).status()?;
+            if !status.success() { bail!("could not copy sample into Arkana LXC {}", s.lxc_vmid); }
+        }
         job.line(format!("Copied to {}", dest.display()));
         let mut c = McpClient::connect(&s.url, &s.key)?;
         job.current("opening the file in Arkana");

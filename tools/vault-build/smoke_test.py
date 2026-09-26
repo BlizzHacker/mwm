@@ -42,6 +42,25 @@ with sync_playwright() as p:
     page.get_by_text("Example login").first.click()
     page.locator("#v-reveal").click()
     assert page.locator("#v-password").inner_text() == "synthetic-secret"
+    csv = '\ufeffname,url,username,password,note\r\n"Example, site",https://example.test/login,synthetic-user,"synthetic, secret","first line\nsecond line"\r\n'
+    page.get_by_role("button", name="Import browser CSV").click()
+    page.locator("#vci-source").select_option("Brave")
+    page.locator("#vci-file").set_input_files({"name": "synthetic.csv", "mimeType": "text/csv", "buffer": csv.encode("utf-8")})
+    page.locator("#vci-go").click()
+    page.locator('[data-ch="go"]').click()
+    page.get_by_text("Example, site").first.wait_for(timeout=30000)
+    page.get_by_text("Example, site").first.click()
+    assert page.locator("#v-password").inner_text() == "••••••••••••"
+    page.locator("#v-reveal").click()
+    assert page.locator("#v-password").inner_text() == "synthetic, secret"
+    assert "first line\nsecond line" in page.locator("#v-detail").inner_text()
+    assert page.evaluate("!!VAULT.db.getDefaultGroup().groups.find(g => g.name === 'Browser passwords - Brave')")
+    parsed = page.evaluate("vaultParseCsv('name,url,username,password\\nA,https://x.test,u,p\\n')")
+    assert len(parsed) == 1 and parsed[0]["password"] == "p"
+    page.get_by_role("button", name="Lock").click()
+    page.locator("#v-pass").fill("Synthetic smoke password 456")
+    page.get_by_role("button", name="Unlock").click()
+    page.get_by_text("Example, site").first.wait_for(timeout=30000)
     totp = page.evaluate("""async () => {
       const now = Date.now; Date.now = () => 59000;
       try { return await vaultTotp('otpauth://totp/test?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&digits=8'); }
@@ -49,7 +68,7 @@ with sync_playwright() as p:
     }""")
     assert totp == "94287082", totp
     assert not errors, errors
-    print("KDBX create, save, lock, reopen, and entry round trip passed")
+    print("KDBX create, browser CSV import, save, lock, reopen, and entry round trip passed")
     cli = r"C:\Program Files\KeePassXC\keepassxc-cli.exe"
     if os.path.exists(cli):
         with tempfile.TemporaryDirectory(prefix="mwm-kdbx-smoke-") as work:

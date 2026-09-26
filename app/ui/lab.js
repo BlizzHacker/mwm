@@ -78,16 +78,22 @@ function drawLabArkana() {
   const box = $("#lab-arkana"); if (!box) return;
   const s = LAB.status || {};
   box.innerHTML = `<h3 style="margin:0 0 8px">Arkana</h3><p class="muted">Deep analysis uses your Arkana server. The API key stays on the selected machine and is never displayed here.</p>
-    <div style="margin-bottom:12px"><span class="pill ${s.reachable ? "low" : "medium"}">${s.reachable ? "Connected" : s.configured ? "Unreachable" : "Not configured"}</span> <span class="mono muted">${esc(s.url || "")}</span></div>
+    <div style="margin-bottom:12px"><span class="pill ${s.reachable ? "low" : "medium"}">${s.reachable ? "Connected" : s.configured ? "Unreachable" : "Not configured"}</span> <span class="mono muted">${esc(s.url || "")}</span>${s.lxc_vmid ? ` <span class="muted">· LXC ${esc(s.lxc_vmid)} via this Proxmox node</span>` : ""}</div>
     <div class="row" style="flex-wrap:wrap"><input class="search mono" id="ark-url" style="flex:1;min-width:220px" placeholder="Arkana address, e.g. http://host:8082" value="${esc(s.url || "")}"><input class="search mono" type="password" id="ark-key" placeholder="API key" autocomplete="off"></div>
     <div class="row" style="margin-top:8px;flex-wrap:wrap"><input class="search mono" id="ark-samples" style="flex:1;min-width:220px" placeholder="Local path mounted as Arkana /samples" value="${esc(s.samples_dir || "")}"><button class="btn" id="ark-connect">Connect</button></div>
-    <div class="row" style="margin-top:12px;flex-wrap:wrap"><button class="btn" id="ark-install" ${s.docker && s.compose && s.git ? "" : "disabled"}>Install Arkana here</button>${s.managed ? '<button class="btn" id="ark-start">Start</button><button class="btn" id="ark-stop">Stop</button><button class="btn" id="ark-update">Update</button>' : ""}</div>
+    <div class="row" style="margin-top:12px;flex-wrap:wrap">${s.pve ? '<button class="btn primary" id="ark-lxc">Connect Arkana LXC</button>' : ""}${s.managed ? '<button class="btn" id="ark-start">Start</button><button class="btn" id="ark-stop">Stop</button><button class="btn" id="ark-update">Update</button>' : `<button class="btn" id="ark-install" ${s.docker && s.compose && s.git ? "" : "disabled"}>Install Arkana here</button>`}</div>
     ${!s.docker || !s.compose || !s.git ? '<div class="muted" style="margin-top:8px">Self-install requires Docker Compose and Git on the selected machine.</div>' : ""}`;
   $("#ark-connect").onclick = async () => {
     const r = await guard(() => invoke("arkana_configure", { url: $("#ark-url").value.trim(), key: $("#ark-key").value, samplesDir: $("#ark-samples").value.trim() }));
     if (r) { LAB.status = r; toast("Arkana connected."); drawLabArkana(); drawLabResult(); }
   };
-  $("#ark-install").onclick = async () => { const id = await guard(() => invoke("arkana_install", {})); if (id) watchJob(id, () => { LAB.status = null; if (current === "lab") VIEWS.lab(); }); };
+  $("#ark-lxc") && ($("#ark-lxc").onclick = async () => {
+    const vmid = await ask("Connect Arkana in an LXC", "LXC ID on this Proxmox node", s.lxc_vmid || "", "Connect");
+    if (!vmid) return;
+    const result = await guard(() => invoke("arkana_connect_lxc", { vmid: vmid.trim() }));
+    if (result) { LAB.status = result; toast(`Arkana LXC ${vmid} connected.`); drawLabArkana(); drawLabResult(); }
+  });
+  $("#ark-install") && ($("#ark-install").onclick = async () => { const id = await guard(() => invoke("arkana_install", {})); if (id) watchJob(id, () => { LAB.status = null; if (current === "lab") VIEWS.lab(); }); });
   for (const action of ["start", "stop", "update"]) {
     const b = $(`#ark-${action}`); if (!b) continue;
     b.onclick = async () => { const r = await guard(() => invoke("arkana_control", { action })); if (r?.job) watchJob(r.job, () => { if (current === "lab") VIEWS.lab(); }); else if (r) { toast(r.ok ? `Arkana ${action} complete.` : r.output, !r.ok); VIEWS.lab(); } };

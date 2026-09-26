@@ -66,20 +66,21 @@ async function vaultStore(buffer) {
   vaultTouch();
 }
 async function vaultSave() {
-  if (!VAULT.db) return;
+  if (!VAULT.db) return false;
   try {
     setAct("vault", "Encrypting KDBX database...");
     await vaultStore(await VAULT.db.save());
     toast("Vault saved.");
     vaultDraw();
-  } catch (e) { toast(String(e?.message || e), true); }
+    return true;
+  } catch (e) { toast(String(e?.message || e), true); return false; }
   finally { setAct("vault", null); }
 }
 
 VIEWS.vault = async function () {
   if (VAULT.db && VAULT.scope !== TARGET) { VAULT.db = null; VAULT.blob = null; }
   $("#top-actions").innerHTML = VAULT.db
-    ? `<button class="btn" id="v-keys">Import machine keys</button><button class="btn" id="v-backup">Download KDBX backup</button><button class="btn" id="v-lock">Lock</button><button class="btn primary" id="v-add">New entry</button>`
+    ? `<button class="btn" id="v-csv">Import browser CSV</button><button class="btn" id="v-keys">Import machine keys</button><button class="btn" id="v-backup">Download KDBX backup</button><button class="btn" id="v-lock">Lock</button><button class="btn primary" id="v-add">New entry</button>`
     : "";
   if (VAULT.db) return vaultDraw();
   $("#page").innerHTML = loading("Checking encrypted vault...");
@@ -180,10 +181,87 @@ function vaultDraw() {
   $("#v-newgroup").onclick = async () => { const name = await ask("New group", "Group name"); if (name?.trim()) { VAULT.db.createGroup(VAULT.db.getDefaultGroup(), name.trim()); vaultSave(); } };
   $$("[data-v-entry]").forEach((el) => (el.onclick = () => { VAULT.selected = el.dataset.vEntry; vaultDraw(); }));
   $("#v-add").onclick = () => vaultEdit(null);
+  $("#v-csv").onclick = vaultImportBrowserPrompt;
   $("#v-keys").onclick = vaultImportMachineKeys;
   $("#v-lock").onclick = vaultLock;
   $("#v-backup").onclick = vaultBackup;
   if (selected) vaultBindDetail(selected);
+}
+function vaultParseCsv(source) {
+  const rows = [], row = [];
+  let field = "", quoted = false, closedQuote = false;
+  const input = source.replace(/^\uFEFF/, "");
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (quoted) {
+      if (ch === '"' && input[i + 1] === '"') { field += '"'; i++; }
+      else if (ch === '"') { quoted = false; closedQuote = true; }
+      else field += ch;
+    } else if (ch === ',' || ch === '\n' || ch === '\r') {
+      row.push(field); field = ""; closedQuote = false;
+      if (ch !== ',') {
+        if (ch === '\r' && input[i + 1] === '\n') i++;
+        if (row.some((cell) => cell !== "")) rows.push(row.slice());
+        row.length = 0;
+      }
+    } else if (ch === '"' && !field && !closedQuote) quoted = true;
+    else if (closedQuote && ch !== ' ' && ch !== '\t') throw new Error("Invalid CSV: text follows a closing quote.");
+    else if (!closedQuote) field += ch;
+  }
+  if (quoted) throw new Error("Invalid CSV: an entry has an unclosed quote.");
+  row.push(field);
+  if (row.some((cell) => cell !== "")) rows.push(row);
+  if (rows.length < 2) throw new Error("CSV has no password entries.");
+  const header = rows.shift().map((cell) => cell.trim().toLowerCase().replace(/[\s_-]+/g, ""));
+  const pick = (...names) => header.findIndex((cell) => names.includes(cell));
+  const column = { name: pick("name", "title"), url: pick("url", "website", "origin", "loginuri"),
+    user: pick("username", "user", "login"), pass: pick("password"), notes: pick("note", "notes") };
+  if (column.pass < 0 || (column.url < 0 && column.name < 0) || column.user < 0)
+    throw new Error("Expected browser CSV columns: username, password, and name or url.");
+  if (rows.some((cells) => cells.length !== header.length)) throw new Error("CSV has a row with the wrong number of columns.");
+  const at = (cells, index) => index < 0 ? "" : cells[index];
+  return rows.map((cells) => ({ title: at(cells, column.name), url: at(cells, column.url),
+    user: at(cells, column.user), password: at(cells, column.pass), notes: at(cells, column.notes) }))
+    .filter((item) => item.password && (item.title || item.url));
+}
+async function vaultImportBrowserPrompt() {
+  if (!VAULT.db || VAULT.scope !== TARGET) return;
+  modal(`<h2>Import browser passwords</h2><p class="muted">Export passwords to CSV from Google Password Manager, Brave, or Microsoft Edge, then select that file here. MWM reads it locally and stores the entries in your encrypted KDBX vault. The CSV is plaintext; delete your export after checking the import.</p>
+    <label class="label">Source</label><select class="search" id="vci-source" style="width:100%;margin:6px 0 12px"><option value="Google">Google Password Manager</option><option value="Brave">Brave</option><option value="Edge">Microsoft Edge / Windows browser</option></select>
+    <label class="label">Exported CSV</label><input type="file" id="vci-file" accept=".csv,text/csv" style="display:block;margin:6px 0 14px">
+    <div class="row" style="justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="vci-go">Review import</button></div><div id="vci-error" class="muted"></div>`);
+  $("#vci-go").onclick = async () => {
+    const file = $("#vci-file").files[0], source = $("#vci-source").value;
+    if (!file) return $("#vci-error").textContent = "Select an exported CSV file.";
+    if (file.size > 5 * 1024 * 1024) return $("#vci-error").textContent = "CSV files are limited to 5 MB.";
+    try {
+      const entries = vaultParseCsv(await file.text());
+      if (!entries.length) throw new Error("No entries with passwords were found.");
+      closeModal();
+      const choice = await choose("Import browser passwords?", `<p class="muted">${entries.length} entries found in ${esc(file.name)}. Matching entries in the ${source} group will be updated with KDBX history. The plaintext CSV is never uploaded to the MWM agent.</p>`, [["go", "Import into vault", "primary"]]);
+      if (choice !== "go") return;
+      if (!VAULT.db || VAULT.scope !== TARGET) throw new Error("Vault locked or machine changed. Reopen it and retry.");
+      let group = vaultGroups().find((g) => g.name === `Browser passwords - ${source}`);
+      if (!group) group = VAULT.db.createGroup(VAULT.db.getDefaultGroup(), `Browser passwords - ${source}`);
+      let added = 0, updated = 0, unchanged = 0;
+      for (const item of entries) {
+        const title = item.title || item.url;
+        let entry = group.entries.find((e) => vf(e, "URL") === item.url && vf(e, "UserName") === item.user &&
+          (item.url || vf(e, "Title") === title));
+        if (entry && vf(entry, "Title") === title && vf(entry, "Password") === item.password && vf(entry, "Notes") === item.notes) { unchanged++; continue; }
+        if (entry) { entry.pushHistory(); updated++; }
+        else { entry = VAULT.db.createEntry(group); added++; }
+        entry.fields.set("Title", title);
+        entry.fields.set("URL", item.url);
+        entry.fields.set("UserName", item.user);
+        entry.fields.set("Password", VK().ProtectedValue.fromString(item.password));
+        entry.fields.set("Notes", item.notes);
+        entry.times.update();
+      }
+      if (!await vaultSave()) throw new Error("Import is in memory but could not be saved. Keep the CSV and retry saving the vault.");
+      toast(`Browser passwords: ${added} added, ${updated} updated, ${unchanged} unchanged. Delete the plaintext CSV after checking.`);
+    } catch (e) { const box = $("#vci-error"); if (box) box.textContent = String(e?.message || e); else toast(String(e?.message || e), true); }
+  };
 }
 async function vaultImportMachineKeys() {
   if (!VAULT.db || VAULT.scope !== TARGET) return;

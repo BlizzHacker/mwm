@@ -30,7 +30,7 @@ pub fn is_mutating(cmd: &str) -> bool {
             | "files_pack" | "files_unpack" | "files_multi_rename" | "files_write" | "toolkit_run" | "server_action"
             | "conn_save" | "conn_remove" | "guest_docker_action" | "deploy_node" | "pve_op"
             | "lab_quarantine" | "lab_quarantine_restore" | "lab_quarantine_delete"
-            | "arkana_configure" | "arkana_install" | "arkana_control" | "arkana_tool" | "arkana_analyze"
+            | "arkana_configure" | "arkana_connect_lxc" | "arkana_install" | "arkana_control" | "arkana_tool" | "arkana_analyze"
             | "arr_mcp_configure" | "arr_mcp_call"
             | "vault_store"
     )
@@ -123,6 +123,7 @@ pub fn call(cmd: &str, a: &Value) -> Result<Value, String> {
         "lab_quarantine_delete" => e(crate::lab::quarantine_delete(&arg::<String>(a, "id")?)),
         "arkana_status" => ok(crate::arkana::status()),
         "arkana_configure" => e(crate::arkana::configure(&arg::<String>(a, "url")?, &arg::<Option<String>>(a, "key")?.unwrap_or_default(), &arg::<Option<String>>(a, "samplesDir")?.unwrap_or_default())),
+        "arkana_connect_lxc" => e(crate::arkana::connect_lxc(&arg::<String>(a, "vmid")?)),
         "arkana_install" => ok(crate::arkana::install(&arg::<Option<String>>(a, "repo")?.unwrap_or_default(), &arg::<Option<String>>(a, "dir")?.unwrap_or_default(), arg::<Option<bool>>(a, "lan")?.unwrap_or(false))),
         "arkana_control" => e(crate::arkana::control(&arg::<String>(a, "action")?)),
         "arkana_tools" => e(crate::arkana::tools()),

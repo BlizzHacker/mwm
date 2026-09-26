@@ -25,6 +25,15 @@ fn plugin(name: &str) -> Option<Plugin> {
         "maintainerr" => Some(Plugin { name: "Maintainerr", port: 6246, api: "health", config: "" }),
         "cleanuparr" => Some(Plugin { name: "CleanUpArr", port: 11011, api: "http", config: "" }),
         "rommarr" => Some(Plugin { name: "RomMarr", port: 80, api: "http", config: "" }),
+        "qbittorrent" | "qbit" => Some(Plugin { name: "qBittorrent", port: 8080, api: "qbit", config: "" }),
+        "jellyfin" => Some(Plugin { name: "Jellyfin", port: 8096, api: "http", config: "" }),
+        "romm" => Some(Plugin { name: "RomM", port: 8080, api: "http", config: "" }),
+        "nzbget" => Some(Plugin { name: "NZBGet", port: 6789, api: "http", config: "" }),
+        "seerr" | "jellyseerr" | "overseerr" => Some(Plugin { name: "Seerr", port: 5055, api: "http", config: "" }),
+        "tautulli" => Some(Plugin { name: "Tautulli", port: 8181, api: "http", config: "" }),
+        "komga" => Some(Plugin { name: "Komga", port: 25600, api: "http", config: "" }),
+        "plex1" | "plex2" | "plex" => Some(Plugin { name: "Plex", port: 32400, api: "http", config: "" }),
+        "flaresolverr" => Some(Plugin { name: "FlareSolverr", port: 8191, api: "http", config: "" }),
         _ => None,
     }
 }
@@ -60,8 +69,19 @@ fn get_json(agent: &ureq::Agent, url: &str, key: &str) -> anyhow::Result<Value> 
     Ok(serde_json::from_reader(response.into_reader())?)
 }
 
-fn details(vmid: &str, ip: &str, p: Plugin) -> Value {
-    let base = format!("http://{ip}:{}", p.port);
+fn service_port(vmid: &str, p: Plugin) -> u16 {
+    if p.api != "qbit" { return p.port; }
+    for path in ["/root/.config/qBittorrent/qBittorrent.conf", "/home/qbittorrent/.config/qBittorrent/qBittorrent.conf"] {
+        if let Ok(config) = capture("pct", &["exec", vmid, "--", "cat", path]) {
+            if let Some(port) = config.lines().find_map(|line| line.strip_prefix("WebUI\\Port=").and_then(|v| v.trim().parse::<u16>().ok())) {
+                return port;
+            }
+        }
+    }
+    p.port
+}
+
+fn details(vmid: &str, base: &str, p: Plugin) -> Value {
     let agent = ureq::AgentBuilder::new()
         .timeout_connect(Duration::from_secs(2)).timeout(Duration::from_secs(5)).build();
     if p.api == "v3" || p.api == "v1" {
@@ -81,9 +101,16 @@ fn details(vmid: &str, ip: &str, p: Plugin) -> Value {
         })();
         return result.unwrap_or_else(|e| json!({"reachable": false, "error": e.to_string()}));
     }
-    let path = if p.api == "health" { "/api/health/ready" } else { "/" };
-    let reachable = agent.get(&format!("{base}{path}")).call().is_ok();
-    json!({"reachable": reachable})
+    let path = match p.api { "health" => "/api/health/ready", "qbit" => "/api/v2/app/version", _ => "/" };
+    match agent.get(&format!("{base}{path}")).call() {
+        Ok(reply) => {
+            let version = if p.api == "qbit" { reply.into_string().unwrap_or_default().trim().to_string() } else { String::new() };
+            json!({"reachable": true, "version": version})
+        }
+        Err(ureq::Error::Status(code, _)) if code == 401 || code == 403 =>
+            json!({"reachable": true, "auth_required": true}),
+        Err(e) => json!({"reachable": false, "error": e.to_string()}),
+    }
 }
 
 /// Discover supported services that live on this Proxmox node.
@@ -100,11 +127,12 @@ pub fn list() -> anyhow::Result<Value> {
         let vmid = r["vmid"].as_u64().unwrap_or(0).to_string();
         let running = r["status"] == "running";
         let ip = if running { ipv4(&vmid).unwrap_or_default() } else { String::new() };
-        let info = if running && !ip.is_empty() { details(&vmid, &ip, p) } else { json!({"reachable": false}) };
+        let url = if ip.is_empty() { String::new() } else { format!("http://{ip}:{}", service_port(&vmid, p)) };
+        let info = if running && !ip.is_empty() { details(&vmid, &url, p) } else { json!({"reachable": false}) };
         out.push(json!({
             "plugin": name.to_ascii_lowercase(), "label": p.name, "vmid": vmid,
             "node": node, "state": r["status"], "ip": ip,
-            "url": if ip.is_empty() { String::new() } else { format!("http://{ip}:{}", p.port) },
+            "url": url,
             "info": info,
         }));
     }
@@ -120,5 +148,6 @@ mod tests {
         assert_eq!(plugin("Sonarr").unwrap().port, 8989);
         assert_eq!(plugin("Prowlarr").unwrap().api, "v1");
         assert!(plugin("unknown").is_none());
+        assert_eq!(plugin("qbittorrent").unwrap().api, "qbit");
     }
 }

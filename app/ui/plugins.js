@@ -1,25 +1,45 @@
-/* Service plugins discovered on the selected Proxmox host. */
+/* Service plugins discovered across connected Proxmox hosts. */
 "use strict";
 
-const PLUG = { rows: [], error: "", mcp: null };
+const PLUG = { rows: [], error: "", mcp: null, hosts: 0 };
 
 VIEWS.plugins = async function () {
   $("#top-actions").innerHTML = '<button class="btn" id="plug-refresh">Refresh</button>';
   $("#plug-refresh").onclick = () => VIEWS.plugins();
-  $("#page").innerHTML = loading("Discovering services on this host...");
-  const [native, bridge] = await Promise.allSettled([invoke("plugins_list"), invoke("arr_mcp_status")]);
-  PLUG.rows = native.status === "fulfilled" ? arr(native.value) : [];
-  PLUG.error = native.status === "rejected" ? String(native.reason) : "";
+  $("#page").innerHTML = loading("Discovering services across connected Proxmox nodes...");
+  const connections = arr(await localInvoke("conn_list").catch(() => []));
+  const sources = [{ id: "", name: "This machine" }, ...connections];
+  const [results, bridge] = await Promise.all([
+    Promise.allSettled(sources.map((source) => source.id
+      ? localInvoke("remote_call", { id: source.id, cmd: "plugins_list", args: {} })
+      : localInvoke("plugins_list"))),
+    Promise.allSettled([invoke("arr_mcp_status")]).then((items) => items[0]),
+  ]);
+  const seen = new Set(), errors = [];
+  PLUG.rows = [];
+  PLUG.hosts = 0;
+  results.forEach((result, i) => {
+    if (result.status === "rejected") { if (sources[i].id === TARGET) errors.push(String(result.reason)); return; }
+    if (arr(result.value).length) PLUG.hosts++;
+    for (const row of arr(result.value)) {
+      const key = `${row.node}|${row.vmid}|${row.plugin}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      PLUG.rows.push({ ...row, sourceId: sources[i].id });
+    }
+  });
+  PLUG.rows.sort((a, b) => `${a.label}|${a.node}`.localeCompare(`${b.label}|${b.node}`));
+  PLUG.error = errors.join(" · ");
   PLUG.mcp = bridge.status === "fulfilled" ? bridge.value : { configured: false, reachable: false, error: String(bridge.reason) };
   if (current === "plugins") drawPlugins();
 };
 
 function drawPlugins() {
   const rows = PLUG.rows;
-  $("#page").innerHTML = `<div class="note" style="margin-bottom:14px">Plugins read service health and queues through each container's local API. API keys remain in the container and are never shown in MWM. Right-click a service for actions.</div>
+  $("#page").innerHTML = `<div class="note" style="margin-bottom:14px">${rows.length} services across ${PLUG.hosts} connected Proxmox node${PLUG.hosts === 1 ? "" : "s"}. API keys stay on the owning node. Right-click a service for actions.</div>
     ${rows.length ? `<div class="card" style="padding:0"><div class="scroll"><table class="table"><thead><tr><th>Service</th><th>Container</th><th>State</th><th>API</th><th>Health</th><th>Queue</th><th>Version</th></tr></thead><tbody>
-    ${rows.map((r, i) => `<tr class="click" tabindex="0" data-plugin="${i}"><td class="cell-main">${esc(r.label)}</td><td class="mono">${esc(r.vmid)} · ${esc(r.node)}</td><td>${statePill(r.state)}</td><td>${r.info?.reachable ? '<span class="pill low">reachable</span>' : `<span class="pill ${r.state === "stopped" ? "" : "medium"}">${r.state === "stopped" ? "off" : "unreachable"}</span>`}</td><td>${r.info?.health ?? "—"}</td><td>${r.info?.queue ?? "—"}</td><td class="mono muted">${esc(r.info?.version || "")}</td></tr>`).join("")}
-    </tbody></table></div></div>` : '<div class="empty"><h3>No supported services on this host</h3>Pick the node that owns Sonarr, Radarr, Lidarr, Prowlarr, RomMarr, Maintainerr or CleanUpArr.</div>'}
+    ${rows.map((r, i) => `<tr class="click" tabindex="0" data-plugin="${i}"><td class="cell-main">${esc(r.label)}</td><td class="mono">${esc(r.vmid)} · ${esc(r.node)}</td><td>${statePill(r.state)}</td><td>${r.info?.auth_required ? '<span class="pill medium">login required</span>' : r.info?.reachable ? '<span class="pill low">reachable</span>' : `<span class="pill ${r.state === "stopped" ? "" : "medium"}">${r.state === "stopped" ? "off" : "unreachable"}</span>`}</td><td>${r.info?.health ?? "—"}</td><td>${r.info?.queue ?? "—"}</td><td class="mono muted">${esc(r.info?.version || "")}</td></tr>`).join("")}
+    </tbody></table></div></div>` : `<div class="empty"><h3>No supported services found</h3>Connect the owning Proxmox nodes in Machines, then refresh.${PLUG.error ? `<p>${esc(PLUG.error)}</p>` : ""}</div>`}
     ${rows.some((r) => r.info?.error) ? `<div class="card" style="margin-top:14px"><h3>API details</h3>${rows.filter((r) => r.info?.error).map((r) => `<div><b>${esc(r.label)}</b>: <span class="muted">${esc(r.info.error)}</span></div>`).join("")}</div>` : ""}`;
   $("#page").insertAdjacentHTML("beforeend", drawArrBridge());
   $("#arr-mcp-connect").onclick = connectArrBridge;
@@ -84,8 +104,16 @@ function pluginDetails(r) {
     ${r.info?.error ? `<div class="note warn-n">${esc(r.info.error)}</div>` : ""}
     <div class="row" style="margin-top:14px;flex-wrap:wrap"><button class="btn" id="plug-open" ${r.url ? "" : "disabled"}>Open service</button><button class="btn" id="plug-guest">Container details</button><button class="btn ${r.state === "running" ? "danger" : "primary"}" id="plug-power">${r.state === "running" ? "Shut down" : "Start"}</button><button class="btn" data-close>Close</button></div>`);
   $("#plug-open").onclick = () => pluginOpen(r);
-  $("#plug-guest").onclick = () => guestPanel(r.node, "lxc", r.vmid);
-  $("#plug-power").onclick = async () => { closeModal(); await guestAction(r.node, "lxc", r.vmid, r.label, r.state === "running" ? "shutdown" : "start"); setTimeout(() => { if (current === "plugins") VIEWS.plugins(); }, 1600); };
+  $("#plug-guest").onclick = () => pluginManage(r);
+  $("#plug-power").onclick = () => pluginManage(r, r.state === "running" ? "shutdown" : "start");
+}
+
+async function pluginManage(r, action = "") {
+  closeModal();
+  if (TARGET !== r.sourceId) await switchTo(r.sourceId);
+  if (action) await guestAction(r.node, "lxc", r.vmid, r.label, action);
+  else await guestPanel(r.node, "lxc", r.vmid);
+  if (action) setTimeout(() => { if (current === "plugins") VIEWS.plugins(); }, 1600);
 }
 
 function pluginMenu(r) {
@@ -93,8 +121,8 @@ function pluginMenu(r) {
     { label: "Details...", icon: "🔎", run: () => pluginDetails(r) },
     { label: "Open service", icon: "↗", disabled: !r.url, run: () => pluginOpen(r) },
     "-",
-    { label: "Container details...", run: () => guestPanel(r.node, "lxc", r.vmid) },
-    { label: r.state === "running" ? "Shut down container..." : "Start container", run: () => guestAction(r.node, "lxc", r.vmid, r.label, r.state === "running" ? "shutdown" : "start") },
+    { label: "Container details...", run: () => pluginManage(r) },
+    { label: r.state === "running" ? "Shut down container..." : "Start container", run: () => pluginManage(r, r.state === "running" ? "shutdown" : "start") },
     "-",
     { label: "Copy address", disabled: !r.url, run: () => copyText(r.url) },
     { label: "Refresh", run: () => VIEWS.plugins() },
