@@ -34,6 +34,7 @@ async function switchTo(id) {
   Object.assign(S, { scan: null, apps: null, startup: null, updates: null, lastClean: null, checked: new Set() });
   if (typeof TK !== "undefined") Object.assign(TK, { report: null, security: null, events: null, network: null, wifi: null, tasks: null, taskJobs: {} });
   if (typeof SRV !== "undefined") SRV.info = null;
+  if (typeof PVE !== "undefined") Object.assign(PVE, { ov: null, updates: null, updatePolicy: null, updateOwner: null });
   if (typeof KEYS !== "undefined") { KEYS.list = null; KEYS.shown = new Set(); }
   if (typeof CMD !== "undefined") { CMD.roots = []; CMD.panes.forEach((p) => { p.listing = null; p.path = ""; p.rows = []; p.sel.clear(); }); }
   JOBS.list = [];

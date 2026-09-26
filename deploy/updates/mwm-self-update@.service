@@ -1,0 +1,11 @@
+[Unit]
+Description=Update MWM %i from the verified stable release
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/mwm-self-update %i
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

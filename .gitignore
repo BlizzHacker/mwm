@@ -7,7 +7,7 @@ __pycache__/
 *.env
 node_modules/
 
-# Private ops scripts for the MoveWeight fleet (LAN topology) - kept on T:\MWM\ops-private
+# Private fleet scripts live outside the public repo on the server.
 deploy/agents/
 deploy/manager/
 __pycache__/

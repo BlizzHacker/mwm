@@ -1,0 +1,12 @@
+[Unit]
+Description=Check for MWM %i updates four times daily
+
+[Timer]
+OnBootSec=20min
+OnCalendar=*-*-* 04,10,16,22:15:00
+RandomizedDelaySec=30min
+Persistent=true
+Unit=mwm-self-update@%i.service
+
+[Install]
+WantedBy=timers.target

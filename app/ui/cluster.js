@@ -3,7 +3,7 @@
    backup coverage, tasks and HA. Long operations are followed as MWM jobs. */
 "use strict";
 
-const PVE = { ov: null, tab: "guests", q: "", node: "", state: "", sort: { k: "vmid", d: 1 } };
+const PVE = { ov: null, tab: "guests", q: "", node: "", state: "", sort: { k: "vmid", d: 1 }, updates: null, updatePolicy: null, updateOwner: null };
 const ago = (t) => { if (!t) return ""; const s = Date.now() / 1000 - t; return s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`; };
 const when = (t) => (t ? new Date(t * 1000).toLocaleString() : "");
 const pctv = (a, b) => (b ? Math.round((a / b) * 100) : 0);
@@ -12,7 +12,7 @@ PAGES.splice(PAGES.findIndex((p) => p.id === "server"), 0, { id: "cluster", labe
 
 VIEWS.cluster = async function () {
   $("#top-actions").innerHTML = `<button class="btn" id="pv-re">Refresh</button>`;
-  $("#pv-re").onclick = () => { PVE.ov = null; VIEWS.cluster(); };
+  $("#pv-re").onclick = () => { PVE.ov = null; PVE.updates = null; VIEWS.cluster(); };
   if (!PVE.ov) {
     $("#page").innerHTML = loading("Reading the whole cluster: nodes, guests, storage, backups, tasks...");
     try { PVE.ov = await invoke("pve_overview"); }
@@ -41,7 +41,7 @@ function drawCluster() {
   const badTasks = tasks.filter((t) => t.status && t.status !== "OK");
   const badStore = storage.filter((s) => s.status !== "available");
   const noBackup = guests.filter((g) => !g.template && backupAge(g).cls !== "low");
-  const tabs = [["guests", `Guests (${guests.length})`], ["nodes", `Nodes (${nodes.length})`], ["storage", `Storage${badStore.length ? ` ⚠${badStore.length}` : ""}`], ["backups", `Backups${noBackup.length ? ` ⚠${noBackup.length}` : ""}`], ["tasks", `Tasks${badTasks.length ? ` ⚠${badTasks.length}` : ""}`], ["ha", "HA"]];
+  const tabs = [["guests", `Guests (${guests.length})`], ["nodes", `Nodes (${nodes.length})`], ["storage", `Storage${badStore.length ? ` ⚠${badStore.length}` : ""}`], ["backups", `Backups${noBackup.length ? ` ⚠${noBackup.length}` : ""}`], ["lxc_updates", "Updates"], ["tasks", `Tasks${badTasks.length ? ` ⚠${badTasks.length}` : ""}`], ["ha", "HA"]];
   $("#page").innerHTML = `
     <div class="grid g4">
       <div class="card"><div class="label">Cluster</div><div class="v" style="font-size:20px;font-weight:700;margin:6px 0">${esc(o.cluster?.name || "standalone")}</div><div>${o.quorate ? '<span class="pill low">quorate</span>' : '<span class="pill high">NO QUORUM</span>'}</div></div>
@@ -52,7 +52,7 @@ function drawCluster() {
     <div class="tabs" style="margin-top:16px">${tabs.map(([k, l]) => `<button class="tab ${PVE.tab === k ? "active" : ""}" data-pvt="${k}">${l}</button>`).join("")}</div>
     <div id="pv-body"></div>`;
   $$("[data-pvt]").forEach((b) => (b.onclick = () => { PVE.tab = b.dataset.pvt; drawCluster(); }));
-  ({ guests: drawGuests, nodes: drawNodesTab, storage: drawStorageTab, backups: drawBackupsTab, tasks: drawTasksTab, ha: drawHaTab }[PVE.tab])();
+  ({ guests: drawGuests, nodes: drawNodesTab, storage: drawStorageTab, backups: drawBackupsTab, lxc_updates: drawLxcUpdatesTab, tasks: drawTasksTab, ha: drawHaTab }[PVE.tab])();
 }
 
 // ------------------------------------------------------------ guests ----
@@ -285,4 +285,96 @@ function drawTasksTab() {
 function drawHaTab() {
   const h = arr(PVE.ov.ha);
   $("#pv-body").innerHTML = `<div class="card" style="padding:0"><table class="table"><tbody>${h.map((x) => `<tr><td class="cell-main">${esc(x.id)}</td><td class="muted">${esc(x.type)}</td><td class="muted">${esc(x.node || "")}</td><td>${statePill(x.status || x.state || "")}</td><td class="muted">${esc(x.request_state || x.crm_state || "")}</td></tr>`).join("") || '<tr><td class="muted">HA is not configured.</td></tr>'}</tbody></table></div>`;
+}
+
+// ------------------------------------------------------ LXC updates ----
+async function lxcOwnerCall(owner, cmd, args = {}) {
+  return owner ? localInvoke("remote_call", { id: owner, cmd, args }) : localInvoke(cmd, args);
+}
+
+async function loadLxcUpdateReport() {
+  await loadConns();
+  const owners = [TARGET, ...FLEET.conns.map((c) => c.id).filter((id) => id !== TARGET)];
+  let lastError;
+  for (const owner of owners) {
+    try {
+      const report = await lxcOwnerCall(owner, "lxc_updates_report");
+      PVE.updates = report;
+      PVE.updateOwner = owner;
+      PVE.updatePolicy = await lxcOwnerCall(owner, "lxc_updates_policy").catch(() => ({ auto_apply: [] }));
+      return;
+    } catch (e) { lastError = e; }
+  }
+  throw lastError || new Error("No Proxmox update scanner is connected");
+}
+
+async function drawLxcUpdatesTab() {
+  const body = $("#pv-body");
+  if (!PVE.updates) {
+    body.innerHTML = loading("Loading scheduled container update inventory...");
+    try { await loadLxcUpdateReport(); }
+    catch (e) {
+      if (current === "cluster" && PVE.tab === "lxc_updates")
+        body.innerHTML = `<div class="empty"><h3>Update inventory unavailable</h3><p>${esc(String(e))}</p><p>The scheduled scanner runs on a Proxmox node and checks every LXC through the cluster.</p></div>`;
+      return;
+    }
+  }
+  if (current !== "cluster" || PVE.tab !== "lxc_updates") return;
+  const rows = arr(PVE.updates.containers);
+  const allowed = new Set(arr(PVE.updatePolicy?.auto_apply).map(String));
+  const pending = rows.reduce((sum, row) => sum + (row.pending || 0), 0);
+  const errors = rows.filter((row) => row.state === "error" || row.state === "stale").length;
+  body.innerHTML = `
+    <div class="grid g3">
+      <div class="card"><div class="label">Containers checked</div><div class="v">${rows.length}</div><div class="muted">${rows.filter((r) => r.state === "stopped").length} stopped and left untouched</div></div>
+      <div class="card"><div class="label">Package updates</div><div class="v">${num(pending)}</div><div class="muted">APT packages in running containers</div></div>
+      <div class="card"><div class="label">Scan health</div><div class="v">${errors ? esc(errors + " need review") : "OK"}</div><div class="muted">${PVE.updates.generated_at ? esc(new Date(PVE.updates.generated_at).toLocaleString()) : ""}</div></div>
+    </div>
+    <div class="row" style="margin:14px 0;justify-content:space-between;flex-wrap:wrap"><span class="muted">Daily checks cover every LXC without an in-container agent. Auto updates run only for selected containers and take a Proxmox snapshot first.</span><button class="btn" id="lxc-update-scan">Scan now</button></div>
+    <div class="card" style="padding:0"><div class="scroll"><table class="table"><thead><tr><th>CT</th><th>Container</th><th>Node</th><th>Status</th><th class="num">Updates</th><th>Automatic</th><th></th></tr></thead><tbody>
+      ${rows.map((row) => `<tr><td class="mono">${esc(row.vmid)}</td><td class="cell-main">${esc(row.name)}<div class="cell-sub">${esc(arr(row.packages).slice(0, 8).join(", "))}</div></td><td class="muted">${esc(row.node)}</td><td>${statePill(row.state)}</td><td class="num">${num(row.pending)}</td>
+        <td><input type="checkbox" class="cb" data-lxc-auto="${esc(row.vmid)}" ${allowed.has(String(row.vmid)) ? "checked" : ""} ${row.manager !== "apt" ? "disabled" : ""}></td>
+        <td><button class="btn small" data-lxc-apply="${esc(row.vmid)}" ${row.state !== "ok" || !row.pending ? "disabled" : ""}>Update now</button></td></tr>`).join("")}
+    </tbody></table></div></div>`;
+  $("#lxc-update-scan").onclick = async () => {
+    const result = await guard(() => lxcOwnerCall(PVE.updateOwner, "lxc_updates_scan"));
+    if (result?.job) { toast("Cluster update scan started."); followLxcUpdateJob(result.job, PVE.updateOwner); }
+  };
+  $$("[data-lxc-auto]").forEach((box) => (box.onchange = async () => {
+    const id = box.dataset.lxcAuto;
+    if (box.checked && !(await choose(`Automatically update CT ${esc(id)}?`,
+      "<p class='muted'>MWM will take a Proxmox snapshot, then install available APT updates during the daily maintenance run. Service restarts inside this container may occur.</p>",
+      [["go", "Enable", "primary"]]))) { box.checked = false; return; }
+    const ids = new Set(allowed);
+    if (box.checked) ids.add(id); else ids.delete(id);
+    const value = await guard(() => lxcOwnerCall(PVE.updateOwner, "lxc_updates_policy_set", { ids: [...ids] }));
+    if (!value) { box.checked = !box.checked; return; }
+    PVE.updatePolicy = value;
+    toast(`Automatic updates ${box.checked ? "enabled" : "disabled"} for CT ${id}.`);
+    drawLxcUpdatesTab();
+  }));
+  $$("[data-lxc-apply]").forEach((button) => (button.onclick = async () => {
+    const row = rows.find((item) => String(item.vmid) === button.dataset.lxcApply);
+    if (!row) return;
+    if (!(await choose(`Update ${esc(row.name)} (CT ${esc(row.vmid)})?`,
+      "<p class='muted'>MWM first takes a Proxmox snapshot, then runs APT upgrade in the container. The snapshot is kept for recovery.</p>",
+      [["go", "Update", "primary"]]))) return;
+    const result = await guard(() => lxcOwnerCall(PVE.updateOwner, "lxc_updates_apply", { node: row.node, vmid: String(row.vmid) }));
+    if (result?.job) { toast(`CT ${row.vmid} update started.`); followLxcUpdateJob(result.job, PVE.updateOwner); }
+  }));
+}
+
+async function followLxcUpdateJob(id, owner) {
+  for (let n = 0; n < 900; n++) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const jobs = await lxcOwnerCall(owner, "jobs_list").catch(() => []);
+    const job = arr(jobs).find((item) => item.id === id);
+    if (job && job.state !== "running") {
+      toast(`${job.title}: ${job.message || job.state}`, job.state === "failed");
+      PVE.updates = null;
+      if (current === "cluster" && PVE.tab === "lxc_updates") drawLxcUpdatesTab();
+      return;
+    }
+  }
+  toast("Update job is still running; refresh to check its status.");
 }
