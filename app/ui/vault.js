@@ -226,7 +226,13 @@ function vaultParseCsv(source) {
 }
 async function vaultImportBrowserPrompt() {
   if (!VAULT.db || VAULT.scope !== TARGET) return;
-  modal(`<h2>Import browser passwords</h2><p class="muted">Export passwords to CSV from Google Password Manager, Brave, or Microsoft Edge, then select that file here. MWM reads it locally and stores the entries in your encrypted KDBX vault. The CSV is plaintext; delete your export after checking the import.</p>
+  modal(`<h2>Import browser passwords</h2><p class="muted">Export passwords to CSV from Google Password Manager, Brave, or Microsoft Edge, then select that file here. MWM reads it locally and stores the entries in your encrypted KDBX vault. This is a one-time import; changes in Brave do not yet sync automatically. The CSV is plaintext; delete your export after checking the import.</p>
+    <details style="margin:8px 0 14px"><summary>How do I export from my browser?</summary><div class="muted" style="line-height:1.7;margin-top:8px">
+      <b>Brave:</b> Menu → Settings → Autofill → Password Manager → Settings → Export passwords → Download file.<br>
+      <b>Google Chrome:</b> Menu → Passwords and autofill → Google Password Manager → Settings → Export passwords → Download file.<br>
+      <b>Microsoft Edge:</b> Menu → Passwords → More (…) → Export passwords.
+      <div>Choose a temporary location you can find, such as Downloads. Select that CSV below, check the imported entries, then delete the CSV.</div>
+    </div></details>
     <label class="label">Source</label><select class="search" id="vci-source" style="width:100%;margin:6px 0 12px"><option value="Google">Google Password Manager</option><option value="Brave">Brave</option><option value="Edge">Microsoft Edge / Windows browser</option></select>
     <label class="label">Exported CSV</label><input type="file" id="vci-file" accept=".csv,text/csv" style="display:block;margin:6px 0 14px">
     <div class="row" style="justify-content:flex-end"><button class="btn" data-close>Cancel</button><button class="btn primary" id="vci-go">Review import</button></div><div id="vci-error" class="muted"></div>`);
