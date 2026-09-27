@@ -124,11 +124,48 @@ def write_report(rows):
     return report
 
 
+def backup_coverage(rows):
+    result = run(["pvesh", "get", "/cluster/backup", "--output-format", "json"], 45)
+    if result.returncode:
+        for row in rows:
+            row["backup_ready"] = False
+            row["backup_error"] = "cannot verify cluster backup jobs"
+        return
+    jobs = [job for job in json.loads(result.stdout) if str(job.get("enabled", 1)) != "0"]
+    status_cache = {}
+    for row in rows:
+        node, vmid = row["node"], row["vmid"]
+        row["backup_ready"] = False
+        if row["state"] != "ok":
+            continue
+        for job in jobs:
+            if job.get("node") not in (None, node):
+                continue
+            ids = {item.strip() for item in str(job.get("vmid", "")).split(",")}
+            if vmid not in ids and "all" not in ids and not job.get("all"):
+                continue
+            storage = job.get("storage")
+            if not storage:
+                continue
+            key = (node, storage)
+            if key not in status_cache:
+                result = run(["pvesh", "get", "/nodes/" + node + "/storage/" + storage + "/status",
+                              "--output-format", "json"], 45)
+                status_cache[key] = (result.returncode == 0 and
+                                     bool(json.loads(result.stdout).get("active")))
+            if status_cache[key]:
+                row["backup_ready"] = True
+                break
+        if not row["backup_ready"]:
+            row["backup_error"] = "no enabled backup job with active storage covers this CT"
+
+
 def scan(refresh):
     guests = resources()
     ips = node_ips()
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         rows = list(pool.map(lambda guest: scan_one(guest, ips, refresh), guests))
+    backup_coverage(rows)
     report = write_report(rows)
     print(json.dumps({"generated_at": report["generated_at"], "total": len(rows),
                       "pending": sum(row["pending"] for row in rows),
@@ -137,12 +174,36 @@ def scan(refresh):
     return report
 
 
+def backup_ready(node, vmid):
+    """Require an enabled backup plan with active storage before any upgrade."""
+    jobs_result = run(["pvesh", "get", "/cluster/backup", "--output-format", "json"], 45)
+    if jobs_result.returncode:
+        raise RuntimeError("cannot verify cluster backup jobs")
+    for job in json.loads(jobs_result.stdout):
+        if str(job.get("enabled", 1)) == "0" or job.get("node") not in (None, node):
+            continue
+        ids = {item.strip() for item in str(job.get("vmid", "")).split(",")}
+        if vmid not in ids and "all" not in ids and not job.get("all"):
+            continue
+        storage = job.get("storage")
+        if not storage:
+            continue
+        result = run(["pvesh", "get", "/nodes/" + node + "/storage/" + storage + "/status",
+                      "--output-format", "json"], 45)
+        if result.returncode:
+            continue
+        if json.loads(result.stdout).get("active"):
+            return
+    raise RuntimeError("no enabled backup job with active storage covers CT " + vmid)
+
+
 def snapshot_and_upgrade(node, vmid):
     ips = node_ips()
     guest = next((row for row in resources()
                   if str(row["vmid"]) == vmid and row["node"] == node), None)
     if not guest or guest.get("status") != "running":
         raise RuntimeError("container is not running on the selected node")
+    backup_ready(node, vmid)
     stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%d%H%M")
     snap = "mwmupd" + stamp
     result = on_node(node, ["pct", "snapshot", vmid, snap,
@@ -171,7 +232,7 @@ def auto_apply(report):
         return
     candidates = [row for row in report["containers"]
                   if row["vmid"] in allowed and row["state"] == "ok"
-                  and row["pending"] > 0]
+                  and row["backup_ready"] and row["pending"] > 0]
     for row in candidates[:MAX_AUTO_PER_RUN]:
         try:
             snapshot_and_upgrade(row["node"], row["vmid"])

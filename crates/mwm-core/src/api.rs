@@ -32,7 +32,7 @@ pub fn is_mutating(cmd: &str) -> bool {
             | "lab_quarantine" | "lab_quarantine_restore" | "lab_quarantine_delete"
             | "arkana_configure" | "arkana_connect_lxc" | "arkana_install" | "arkana_control" | "arkana_tool" | "arkana_analyze"
             | "arr_mcp_configure" | "arr_mcp_call"
-            | "lxc_fs_write" | "lxc_fs_mkdir" | "lxc_fs_delete" | "lxc_updates_policy_set" | "lxc_updates_scan" | "lxc_updates_apply"
+            | "lxc_fs_write" | "lxc_fs_mkdir" | "lxc_fs_delete" | "lxc_updates_policy_set" | "lxc_updates_scan" | "lxc_updates_apply" | "pve_updates_policy_set" | "pve_updates_scan" | "pve_updates_apply" | "docker_updates_policy_set" | "docker_updates_scan" | "docker_updates_apply"
             | "vault_store"
     )
 }
@@ -143,6 +143,16 @@ pub fn call(cmd: &str, a: &Value) -> Result<Value, String> {
         "lxc_updates_policy_set" => e(crate::lxc_updates::set_policy(&arg::<Vec<String>>(a, "ids")?)),
         "lxc_updates_scan" => e(crate::lxc_updates::scan()),
         "lxc_updates_apply" => e(crate::lxc_updates::apply(&arg::<String>(a, "node")?, &arg::<String>(a, "vmid")?)),
+        "pve_updates_report" => e(crate::pve_updates::report()),
+        "pve_updates_policy" => e(crate::pve_updates::policy()),
+        "pve_updates_policy_set" => e(crate::pve_updates::set_policy(&arg::<Vec<String>>(a, "nodes")?)),
+        "pve_updates_scan" => e(crate::pve_updates::scan()),
+        "pve_updates_apply" => e(crate::pve_updates::apply(&arg::<String>(a, "node")?)),
+        "docker_updates_report" => e(crate::docker_updates::report()),
+        "docker_updates_policy" => e(crate::docker_updates::policy()),
+        "docker_updates_policy_set" => e(crate::docker_updates::set_policy(&arg::<Vec<Value>>(a, "items")?)),
+        "docker_updates_scan" => e(crate::docker_updates::scan()),
+        "docker_updates_apply" => e(crate::docker_updates::apply(&arg::<String>(a, "node")?, &arg::<String>(a, "vmid")?, &arg::<String>(a, "project")?)),
         "pve_guest" => e(crate::pve::guest(&arg::<String>(a, "node")?, &arg::<String>(a, "kind")?, &arg::<String>(a, "vmid")?)),
         "pve_op" => e(crate::pve::guest_op(&arg::<String>(a, "node")?, &arg::<String>(a, "kind")?, &arg::<String>(a, "vmid")?, &arg::<String>(a, "op")?, a.get("params").unwrap_or(&Value::Null))),
         "pve_task_log" => e(crate::pve::task_log(&arg::<String>(a, "node")?, &arg::<String>(a, "upid")?)),

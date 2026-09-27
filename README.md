@@ -92,22 +92,26 @@ In MWM, choose that node in the machine switcher, open **Plugins**, click **Conn
 
 ## Scheduled updates
 
-MWM can update its own Linux service from the latest stable GitHub release. It verifies the published SHA256 checksum and the binary version, keeps the previous binary, restarts the service, and rolls back if startup fails. On each Linux host running MWM:
+MWM uses **systemd timers and Windows Task Scheduler on the managed machines**. Codex is not part of the update path. Linux MWM services check the latest stable GitHub release four times daily, verify the published SHA256 and binary version, keep the prior executable, restart the service, and roll back if startup fails. Install on each Linux host running MWM:
 
 ```sh
 sudo sh deploy/updates/install.sh --service mwm-web
 # or: sudo sh deploy/updates/install.sh --service mwm-agent
 ```
 
-On one Proxmox node, add `--cluster` to install a daily cluster-wide LXC inventory timer. The scanner checks every running LXC through its owning PVE node, leaves stopped containers alone, and shows results in **Proxmox Cluster → Updates**:
+On **one** Proxmox node, add `--cluster` to install three cluster-wide timers. LXCs and Docker Compose projects do not need an MWM install. The timers inventory every running LXC's APT packages at 03:30, every PVE host's packages at 05:30, and Docker Compose projects inside LXCs at 06:30. Timers have random jitter and jobs are serialized within each updater:
 
 ```sh
 sudo sh deploy/updates/install.sh --service mwm-web --cluster
-sudo systemctl start mwm-lxc-updates.service
-sudo systemctl status mwm-lxc-updates.timer
+sudo systemctl start mwm-pve-updates.service mwm-docker-updates.service
+sudo systemctl list-timers 'mwm-*'
 ```
 
-Automatic APT package installation starts disabled for every container. Enable it per container in the Updates tab. MWM snapshots that LXC before upgrading; if the snapshot fails, it skips the upgrade. Only three opted-in containers are upgraded per maintenance run. Docker images, app-specific release channels, Windows VMs, and Proxmox host packages have separate update paths and are not changed by the LXC timer. Review backup coverage before enabling unattended upgrades.
+The **Proxmox Cluster → Updates** tab shows package counts, Compose projects, backup readiness, and controls for manual or automatic updates. Automatic upgrades start **off** for every LXC, PVE host, and Docker project. Opt in per target when backups are working. An LXC must have an enabled backup job whose storage is active; MWM then takes a Proxmox snapshot before `apt-get upgrade`. A PVE host update requires all cluster nodes online, retained quorum, all enabled backup jobs backed by active storage, and an APT simulation that does not remove critical PVE packages. It uses Proxmox's documented `apt-get dist-upgrade` path, upgrades at most one opted-in node per run, and **never automatically reboots**. Docker Compose projects pull images; only a changed image triggers an LXC snapshot and `compose up -d`, at most one project per run. Failed updates retain the snapshot and report the error.
+
+Portable Windows desktop installs can use `deploy/updates/install-windows.ps1` to register a current-user task at logon and daily at 04:30. It checks the latest stable release, verifies the portable executable's SHA256 and version, and stages an update while MWM is open; a later run swaps it after MWM exits. The task skips downloads when C: has less than 512 MB free. **Microsoft Store MSIX installs use Store updates** and should not register this portable task. Ubuntu's built-in `apt-daily-upgrade` and `unattended-upgrades` handle OS security updates on the AI Unit; MWM's own binary timer runs there too.
+
+These timers cover Linux OS packages, PVE host packages, and Docker Compose images. Applications installed from custom scripts or release channels, Windows OS/VM updates, firmware, and major distribution upgrades still need their own update provider and review. In particular, no unattended guest or PVE upgrade runs while its backup gate is red.
 
 ## Build (everything cross-compiles from Linux)
 ```
@@ -115,7 +119,7 @@ rustup target add x86_64-pc-windows-msvc x86_64-unknown-linux-musl
 cargo install cargo-xwin tauri-cli
 cd app/src-tauri && cargo tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc
 cargo build --release --target x86_64-unknown-linux-musl -p mwm-cli
-packaging/linux/build-packages.sh 4.1.0 dist/            # .deb, Unraid .plg, install.sh, SHA256SUMS
+packaging/linux/build-packages.sh 4.2.0 dist/            # .deb, Unraid .plg, install.sh, SHA256SUMS
 ```
 Store package (on Windows with the Windows SDK): `packaging/msix/build-msix.ps1`.
 Layout: `crates/mwm-core` (engine + one command table `api.rs`), `crates/mwm-cli` (`mwm`, incl. `serve`),

@@ -1,0 +1,13 @@
+[Unit]
+Description=Inventory and optionally update Docker Compose projects in Proxmox LXCs
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/usr/bin/pvesh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/mwm-docker-updates auto
+TimeoutStartSec=4h
+Nice=15
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

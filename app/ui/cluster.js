@@ -3,7 +3,7 @@
    backup coverage, tasks and HA. Long operations are followed as MWM jobs. */
 "use strict";
 
-const PVE = { ov: null, tab: "guests", q: "", node: "", state: "", sort: { k: "vmid", d: 1 }, updates: null, updatePolicy: null, updateOwner: null };
+const PVE = { ov: null, tab: "guests", q: "", node: "", state: "", sort: { k: "vmid", d: 1 }, updates: null, updatePolicy: null, updateOwner: null, hostUpdates: null, hostUpdatePolicy: null, dockerUpdates: null, dockerUpdatePolicy: null };
 const ago = (t) => { if (!t) return ""; const s = Date.now() / 1000 - t; return s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`; };
 const when = (t) => (t ? new Date(t * 1000).toLocaleString() : "");
 const pctv = (a, b) => (b ? Math.round((a / b) * 100) : 0);
@@ -12,7 +12,7 @@ PAGES.splice(PAGES.findIndex((p) => p.id === "server"), 0, { id: "cluster", labe
 
 VIEWS.cluster = async function () {
   $("#top-actions").innerHTML = `<button class="btn" id="pv-re">Refresh</button>`;
-  $("#pv-re").onclick = () => { PVE.ov = null; PVE.updates = null; VIEWS.cluster(); };
+  $("#pv-re").onclick = () => { PVE.ov = null; PVE.updates = null; PVE.hostUpdates = null; PVE.dockerUpdates = null; VIEWS.cluster(); };
   if (!PVE.ov) {
     $("#page").innerHTML = loading("Reading the whole cluster: nodes, guests, storage, backups, tasks...");
     try { PVE.ov = await invoke("pve_overview"); }
@@ -302,6 +302,10 @@ async function loadLxcUpdateReport() {
       PVE.updates = report;
       PVE.updateOwner = owner;
       PVE.updatePolicy = await lxcOwnerCall(owner, "lxc_updates_policy").catch(() => ({ auto_apply: [] }));
+      PVE.hostUpdates = await lxcOwnerCall(owner, "pve_updates_report").catch(() => null);
+      PVE.hostUpdatePolicy = await lxcOwnerCall(owner, "pve_updates_policy").catch(() => ({ auto_apply: [] }));
+      PVE.dockerUpdates = await lxcOwnerCall(owner, "docker_updates_report").catch(() => null);
+      PVE.dockerUpdatePolicy = await lxcOwnerCall(owner, "docker_updates_policy").catch(() => ({ auto_apply: [] }));
       return;
     } catch (e) { lastError = e; }
   }
@@ -330,12 +334,16 @@ async function drawLxcUpdatesTab() {
       <div class="card"><div class="label">Package updates</div><div class="v">${num(pending)}</div><div class="muted">APT packages in running containers</div></div>
       <div class="card"><div class="label">Scan health</div><div class="v">${errors ? esc(errors + " need review") : "OK"}</div><div class="muted">${PVE.updates.generated_at ? esc(new Date(PVE.updates.generated_at).toLocaleString()) : ""}</div></div>
     </div>
-    <div class="row" style="margin:14px 0;justify-content:space-between;flex-wrap:wrap"><span class="muted">Daily checks cover every LXC without an in-container agent. Auto updates run only for selected containers and take a Proxmox snapshot first.</span><button class="btn" id="lxc-update-scan">Scan now</button></div>
-    <div class="card" style="padding:0"><div class="scroll"><table class="table"><thead><tr><th>CT</th><th>Container</th><th>Node</th><th>Status</th><th class="num">Updates</th><th>Automatic</th><th></th></tr></thead><tbody>
-      ${rows.map((row) => `<tr><td class="mono">${esc(row.vmid)}</td><td class="cell-main">${esc(row.name)}<div class="cell-sub">${esc(arr(row.packages).slice(0, 8).join(", "))}</div></td><td class="muted">${esc(row.node)}</td><td>${statePill(row.state)}</td><td class="num">${num(row.pending)}</td>
-        <td><input type="checkbox" class="cb" data-lxc-auto="${esc(row.vmid)}" ${allowed.has(String(row.vmid)) ? "checked" : ""} ${row.manager !== "apt" ? "disabled" : ""}></td>
-        <td><button class="btn small" data-lxc-apply="${esc(row.vmid)}" ${row.state !== "ok" || !row.pending ? "disabled" : ""}>Update now</button></td></tr>`).join("")}
-    </tbody></table></div></div>`;
+    <div class="row" style="margin:14px 0;justify-content:space-between;flex-wrap:wrap"><span class="muted">Daily checks cover every LXC without an in-container agent. Auto updates run only for selected containers with an active backup plan, and take a Proxmox snapshot first.</span><button class="btn" id="lxc-update-scan">Scan now</button></div>
+    <div class="card" style="padding:0"><div class="scroll"><table class="table"><thead><tr><th>CT</th><th>Container</th><th>Node</th><th>Status</th><th class="num">Updates</th><th>Backup</th><th>Automatic</th><th></th></tr></thead><tbody>
+      ${rows.map((row) => `<tr><td class="mono">${esc(row.vmid)}</td><td class="cell-main">${esc(row.name)}<div class="cell-sub">${esc(arr(row.packages).slice(0, 8).join(", "))}</div></td><td class="muted">${esc(row.node)}</td><td>${statePill(row.state)}</td><td class="num">${num(row.pending)}</td><td>${row.backup_ready ? '<span class="pill low">ready</span>' : `<span class="pill high" title="${esc(row.backup_error || "No active backup plan")}">not ready</span>`}</td>
+        <td><input type="checkbox" class="cb" data-lxc-auto="${esc(row.vmid)}" ${allowed.has(String(row.vmid)) ? "checked" : ""} ${row.manager !== "apt" || !row.backup_ready ? "disabled" : ""}></td>
+        <td><button class="btn small" data-lxc-apply="${esc(row.vmid)}" ${row.state !== "ok" || !row.pending || !row.backup_ready ? "disabled" : ""}>Update now</button></td></tr>`).join("")}
+    </tbody></table></div></div>
+    <div id="pve-host-updates" style="margin-top:20px"></div>
+    <div id="docker-project-updates" style="margin-top:20px"></div>`;
+  drawPveHostUpdates();
+  drawDockerUpdates();
   $("#lxc-update-scan").onclick = async () => {
     const result = await guard(() => lxcOwnerCall(PVE.updateOwner, "lxc_updates_scan"));
     if (result?.job) { toast("Cluster update scan started."); followLxcUpdateJob(result.job, PVE.updateOwner); }
@@ -364,6 +372,105 @@ async function drawLxcUpdatesTab() {
   }));
 }
 
+function drawPveHostUpdates() {
+  const body = $("#pve-host-updates");
+  if (!body) return;
+  const report = PVE.hostUpdates;
+  if (!report) {
+    body.innerHTML = '<div class="card"><h3>Proxmox host updates</h3><p class="muted">Host inventory is not installed yet on this cluster controller.</p></div>';
+    return;
+  }
+  const nodes = arr(report.nodes);
+  const allowed = new Set(arr(PVE.hostUpdatePolicy?.auto_apply).map(String));
+  const backup = report.backup_gate || { ready: false, problems: ["Backup status unavailable"] };
+  const ready = !!report.quorate && !!backup.ready && nodes.every((n) => n.online && n.state === "ok");
+  body.innerHTML = `
+    <div class="card"><div class="row" style="justify-content:space-between;flex-wrap:wrap"><div><h3>Proxmox host updates</h3><p class="muted">Daily systemd scan. At most one opted-in host is upgraded per run. MWM checks quorum, backup storage and APT's dry run; reboots stay manual.</p></div><button class="btn" id="pve-update-scan">Scan hosts</button></div>
+      <p>${ready ? '<span class="pill low">Maintenance gate ready</span>' : '<span class="pill high">Automatic host upgrades blocked</span>'}</p>
+      ${!backup.ready ? `<p class="muted">${esc(arr(backup.problems).join("; "))}</p>` : ""}
+      ${!report.quorate ? '<p class="muted">Cluster has no quorum.</p>' : ""}
+      <div class="scroll"><table class="table"><thead><tr><th>Node</th><th>Version</th><th>Status</th><th class="num">Packages</th><th>Automatic</th><th></th></tr></thead><tbody>
+      ${nodes.map((row) => `<tr><td class="cell-main">${esc(row.node)}<div class="cell-sub">${esc(arr(row.packages).slice(0, 8).join(", "))}</div></td><td class="muted">${esc(row.version)}</td><td>${statePill(row.state)} ${row.reboot_required ? '<span class="pill medium">reboot needed</span>' : ""}</td><td class="num">${num(row.pending)}</td>
+        <td><input type="checkbox" data-pve-auto="${esc(row.node)}" ${allowed.has(row.node) ? "checked" : ""} ${ready ? "" : "disabled"}></td>
+        <td><button class="btn small" data-pve-apply="${esc(row.node)}" ${ready && row.pending ? "" : "disabled"}>Update now</button></td></tr>`).join("")}
+      </tbody></table></div></div>`;
+  $("#pve-update-scan").onclick = async () => {
+    const result = await guard(() => lxcOwnerCall(PVE.updateOwner, "pve_updates_scan"));
+    if (result?.job) { toast("Proxmox host scan started."); followLxcUpdateJob(result.job, PVE.updateOwner); }
+  };
+  $$("[data-pve-auto]").forEach((box) => (box.onchange = async () => {
+    const node = box.dataset.pveAuto;
+    if (box.checked && !(await choose(`Automatically update ${esc(node)}?`,
+      "<p class='muted'>MWM upgrades one Proxmox node per maintenance run after quorum, backup storage and APT safety checks. Packages can restart host services. Kernel reboots remain manual.</p>",
+      [["go", "Enable", "primary"]]))) { box.checked = false; return; }
+    const next = new Set(allowed);
+    if (box.checked) next.add(node); else next.delete(node);
+    const value = await guard(() => lxcOwnerCall(PVE.updateOwner, "pve_updates_policy_set", { nodes: [...next] }));
+    if (!value) { box.checked = !box.checked; return; }
+    PVE.hostUpdatePolicy = value;
+    toast(`Automatic PVE updates ${box.checked ? "enabled" : "disabled"} for ${node}.`);
+    drawPveHostUpdates();
+  }));
+  $$("[data-pve-apply]").forEach((button) => (button.onclick = async () => {
+    const node = button.dataset.pveApply;
+    if (!(await choose(`Update Proxmox host ${esc(node)}?`,
+      "<p class='muted'>MWM verifies cluster quorum and backup storage, runs an APT dry run, then upgrades packages. Services may restart; reboot is a separate manual action.</p>",
+      [["go", "Update host", "primary"]]))) return;
+    const result = await guard(() => lxcOwnerCall(PVE.updateOwner, "pve_updates_apply", { node }));
+    if (result?.job) { toast(`${node} update started.`); followLxcUpdateJob(result.job, PVE.updateOwner); }
+  }));
+}
+
+function drawDockerUpdates() {
+  const body = $("#docker-project-updates");
+  if (!body) return;
+  const report = PVE.dockerUpdates;
+  if (!report) {
+    body.innerHTML = '<div class="card"><h3>Docker Compose projects</h3><p class="muted">Docker project inventory is not installed yet on this cluster controller.</p></div>';
+    return;
+  }
+  const projects = arr(report.projects).filter((row) => row.project || row.status === "error");
+  const allowed = new Set(arr(PVE.dockerUpdatePolicy?.auto_apply).map((x) => `${x.vmid}|${x.project}`));
+  body.innerHTML = `
+    <div class="card"><div class="row" style="justify-content:space-between;flex-wrap:wrap"><div><h3>Docker Compose projects</h3><p class="muted">MWM discovers Compose projects inside LXCs without an agent. Opted-in projects pull images daily; changed images trigger an LXC snapshot and Compose restart. At most one project changes per run.</p></div><button class="btn" id="docker-update-scan">Scan projects</button></div>
+      <div class="scroll"><table class="table"><thead><tr><th>CT</th><th>Project</th><th>Node</th><th>Status</th><th>Backup</th><th>Automatic</th><th></th></tr></thead><tbody>
+      ${projects.map((row) => {
+        const key = `${row.vmid}|${row.project}`;
+        const ready = !!row.project && !!row.backup_ready && String(row.status).startsWith("running");
+        return `<tr><td class="mono">${esc(row.vmid)} <span class="muted">${esc(row.container)}</span></td><td class="cell-main">${esc(row.project || "Scan error")}<div class="cell-sub">${esc(row.error || row.config_files || "")}</div></td><td class="muted">${esc(row.node)}</td><td>${statePill(row.status)}</td><td>${row.backup_ready ? '<span class="pill low">ready</span>' : '<span class="pill high">not ready</span>'}</td>
+          <td><input type="checkbox" data-docker-auto="${esc(key)}" ${allowed.has(key) ? "checked" : ""} ${ready ? "" : "disabled"}></td>
+          <td><button class="btn small" data-docker-apply="${esc(key)}" ${ready ? "" : "disabled"}>Update now</button></td></tr>`;
+      }).join("") || '<tr><td colspan="7" class="muted">No Docker Compose projects found in running LXCs.</td></tr>'}
+      </tbody></table></div></div>`;
+  $("#docker-update-scan").onclick = async () => {
+    const result = await guard(() => lxcOwnerCall(PVE.updateOwner, "docker_updates_scan"));
+    if (result?.job) { toast("Docker project scan started."); followLxcUpdateJob(result.job, PVE.updateOwner); }
+  };
+  $$("[data-docker-auto]").forEach((box) => (box.onchange = async () => {
+    const [vmid, project] = box.dataset.dockerAuto.split("|");
+    if (box.checked && !(await choose(`Automatically update Docker ${esc(project)} in CT ${esc(vmid)}?`,
+      "<p class='muted'>MWM pulls published images. If an image changed, it snapshots the LXC, recreates the Compose services and checks they are running. Service interruption is possible.</p>",
+      [["go", "Enable", "primary"]]))) { box.checked = false; return; }
+    const next = new Set(allowed);
+    if (box.checked) next.add(box.dataset.dockerAuto); else next.delete(box.dataset.dockerAuto);
+    const items = [...next].map((key) => { const [id, name] = key.split("|"); return { vmid: id, project: name }; });
+    const value = await guard(() => lxcOwnerCall(PVE.updateOwner, "docker_updates_policy_set", { items }));
+    if (!value) { box.checked = !box.checked; return; }
+    PVE.dockerUpdatePolicy = value;
+    toast(`Docker automatic updates ${box.checked ? "enabled" : "disabled"} for ${project}.`);
+    drawDockerUpdates();
+  }));
+  $$("[data-docker-apply]").forEach((button) => (button.onclick = async () => {
+    const row = projects.find((x) => `${x.vmid}|${x.project}` === button.dataset.dockerApply);
+    if (!row) return;
+    if (!(await choose(`Update Docker ${esc(row.project)} in CT ${esc(row.vmid)}?`,
+      "<p class='muted'>MWM pulls the images first. If they changed, it snapshots the LXC, recreates the project and checks the services. The snapshot stays available for recovery.</p>",
+      [["go", "Update project", "primary"]]))) return;
+    const result = await guard(() => lxcOwnerCall(PVE.updateOwner, "docker_updates_apply", { node: row.node, vmid: String(row.vmid), project: row.project }));
+    if (result?.job) { toast(`Docker ${row.project} update started.`); followLxcUpdateJob(result.job, PVE.updateOwner); }
+  }));
+}
+
 async function followLxcUpdateJob(id, owner) {
   for (let n = 0; n < 900; n++) {
     await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -372,6 +479,8 @@ async function followLxcUpdateJob(id, owner) {
     if (job && job.state !== "running") {
       toast(`${job.title}: ${job.message || job.state}`, job.state === "failed");
       PVE.updates = null;
+      PVE.hostUpdates = null;
+      PVE.dockerUpdates = null;
       if (current === "cluster" && PVE.tab === "lxc_updates") drawLxcUpdatesTab();
       return;
     }
