@@ -20,6 +20,7 @@ pub mod lxc_updates;
 pub mod pve_updates;
 pub mod docker_updates;
 pub mod mcp_arr;
+pub mod offload;
 pub mod plugins;
 pub mod fsutil;
 pub mod procs;

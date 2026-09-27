@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use mwm_core::{apps, cleaner, disk, drivers, dupes, jobs, keys, procs, server, shred, startup, sys, toolkit, updater};
+use mwm_core::{apps, cleaner, disk, drivers, dupes, jobs, keys, offload, procs, server, shred, startup, sys, toolkit, updater};
 
 
 #[derive(Parser)]
@@ -110,6 +110,12 @@ enum Cmd {
         task: Option<String>,
         #[arg(long)]
         list: bool,
+    },
+    /// Move Weight: what could move to your server (`scan`), or one guard pass (`guard`).
+    Offload {
+        /// scan | guard | status
+        #[arg(default_value = "scan")]
+        action: String,
     },
     /// Running programs by memory use.
     Top {
@@ -394,6 +400,18 @@ Failed services: {}", f.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().jo
                 std::thread::sleep(std::time::Duration::from_millis(300));
             }
         }
+        Cmd::Offload { action } => match action.as_str() {
+            "guard" => println!("{}", offload::guard_run()),
+            "status" => println!("{}", serde_json::to_string_pretty(&offload::status())?),
+            _ => {
+                let s = offload::scan_now(&offload::policy(), None);
+                emit(j, &s, || {
+                    for i in &s.items {
+                        println!("{:>10}  {:>10}  {:<11} {:<7} {}", human(i.bytes), human(i.ship_bytes), i.kind, i.verdict, i.path);
+                    }
+                });
+            }
+        },
         Cmd::Top { n } => {
             let mut p = procs::list();
             p.truncate(n);
