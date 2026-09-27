@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily MWM Docker Compose project inventory
+
+[Timer]
+OnCalendar=*-*-* 06:30:00
+RandomizedDelaySec=30min
+Persistent=true
+Unit=mwm-docker-updates.service
+
+[Install]
+WantedBy=timers.target

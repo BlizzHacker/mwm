@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily MWM inventory of Proxmox host updates
+
+[Timer]
+OnCalendar=*-*-* 05:30:00
+RandomizedDelaySec=30min
+Persistent=true
+Unit=mwm-pve-updates.service
+
+[Install]
+WantedBy=timers.target

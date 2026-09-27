@@ -41,6 +41,13 @@ jobs:
       - name: Build desktop app
         working-directory: app/src-tauri
         run: cargo tauri build ${{ matrix.args }}
+      - name: Windows portable executable and checksum
+        if: startsWith(matrix.os, 'windows')
+        shell: pwsh
+        run: |
+          Copy-Item target/release/MoveWeightManager.exe MWM-portable.exe
+          $hash = (Get-FileHash -Algorithm SHA256 MWM-portable.exe).Hash.ToLowerInvariant()
+          Set-Content -Path MWM-portable.exe.sha256 -Value "$hash  MWM-portable.exe" -Encoding ascii
       - name: macOS command-line tool (universal)
         if: startsWith(matrix.os, 'macos')
         run: |
@@ -57,6 +64,8 @@ jobs:
             target/**/bundle/deb/*.deb
             target/**/bundle/msi/*.msi
             mwm-macos-universal
+            MWM-portable.exe
+            MWM-portable.exe.sha256
 
   linux-cli:
     runs-on: ubuntu-latest

@@ -28,14 +28,26 @@ if [ "$cluster" -eq 1 ]; then
   install -D -m 0755 "$root/mwm-lxc-updates.py" /usr/local/libexec/mwm-lxc-updates
   install -m 0644 "$root/mwm-lxc-updates.service" /etc/systemd/system/mwm-lxc-updates.service
   install -m 0644 "$root/mwm-lxc-updates.timer" /etc/systemd/system/mwm-lxc-updates.timer
+  install -D -m 0755 "$root/mwm-pve-updates.py" /usr/local/libexec/mwm-pve-updates
+  install -m 0644 "$root/mwm-pve-updates.service" /etc/systemd/system/mwm-pve-updates.service
+  install -m 0644 "$root/mwm-pve-updates.timer" /etc/systemd/system/mwm-pve-updates.timer
+  install -D -m 0755 "$root/mwm-docker-updates.py" /usr/local/libexec/mwm-docker-updates
+  install -m 0644 "$root/mwm-docker-updates.service" /etc/systemd/system/mwm-docker-updates.service
+  install -m 0644 "$root/mwm-docker-updates.timer" /etc/systemd/system/mwm-docker-updates.timer
   install -d -m 0750 /etc/mwm
   if [ ! -e /etc/mwm/lxc-update-policy.json ]; then
     install -m 0640 "$root/lxc-update-policy.example.json" /etc/mwm/lxc-update-policy.json
+  fi
+  if [ ! -e /etc/mwm/pve-update-policy.json ]; then
+    install -m 0640 "$root/pve-update-policy.example.json" /etc/mwm/pve-update-policy.json
+  fi
+  if [ ! -e /etc/mwm/docker-update-policy.json ]; then
+    install -m 0640 "$root/docker-update-policy.example.json" /etc/mwm/docker-update-policy.json
   fi
 fi
 systemctl daemon-reload
 systemctl enable --now "mwm-self-update@$service.timer"
 if [ "$cluster" -eq 1 ]; then
-  systemctl enable --now mwm-lxc-updates.timer
+  systemctl enable --now mwm-lxc-updates.timer mwm-pve-updates.timer mwm-docker-updates.timer
 fi
 echo "MWM timers enabled for $service; cluster inventory: $cluster"
