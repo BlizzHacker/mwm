@@ -34,6 +34,7 @@ pub fn is_mutating(cmd: &str) -> bool {
             | "arr_mcp_configure" | "arr_mcp_call"
             | "lxc_fs_write" | "lxc_fs_mkdir" | "lxc_fs_delete" | "lxc_updates_policy_set" | "lxc_updates_scan" | "lxc_updates_apply" | "pve_updates_policy_set" | "pve_updates_scan" | "pve_updates_apply" | "docker_updates_policy_set" | "docker_updates_scan" | "docker_updates_apply"
             | "vault_store"
+            | "offload_policy_set" | "offload_run" | "offload_guard_now"
     )
 }
 
@@ -175,6 +176,16 @@ pub fn call(cmd: &str, a: &Value) -> Result<Value, String> {
         "conn_list" => ok(remote::list()),
         "conn_save" => e(remote::save(arg(a, "id")?, &arg::<String>(a, "name")?, &arg::<String>(a, "url")?, &arg::<Option<String>>(a, "token")?.unwrap_or_default())),
         "conn_remove" => e(remote::remove(&arg::<String>(a, "id")?)),
+        // Move Weight: heavy folders to your own server, and keep them off.
+        "offload_status" => ok(crate::offload::status()),
+        "offload_policy_set" => e(crate::offload::set_policy(&arg::<crate::offload::Policy>(a, "policy")?)),
+        "offload_server_check" => ok(crate::offload::server_check()),
+        "offload_scan" => ok(crate::offload::scan_job()),
+        "offload_run" => ok(crate::offload::run_job(arg::<Vec<String>>(a, "paths")?)),
+        "offload_guard_now" => {
+            std::thread::spawn(crate::offload::guard_run);
+            ok(true)
+        }
         "remote_call" => remote::call(&arg::<String>(a, "id")?, &arg::<String>(a, "cmd")?, a.get("args").unwrap_or(&Value::Null)),
         other => Err(format!("unknown command `{other}`")),
     }

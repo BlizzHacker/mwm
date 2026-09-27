@@ -154,6 +154,7 @@ const PAGES = [
   { id: "health", label: "Health Check", icon: "health" },
   { id: "fleet", label: "Machines", icon: "server" },
   { sec: "Clean" },
+  { id: "offload", label: "Move Weight", icon: "weight" },
   { id: "cleaner", label: "Custom Clean", icon: "clean" },
   { id: "dupes", label: "Duplicate Finder", icon: "dupes" },
   { id: "disk", label: "Disk Analyzer", icon: "disk" },

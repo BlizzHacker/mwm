@@ -15,6 +15,7 @@ Geek Squad / Hiren's repair kit** - with one ~4 MB app for Windows, and a single
 
 | Area | MWM |
 |---|---|
+| **Move Weight** | Moves heavy folders off this drive onto your own server over SSH and keeps them off. Git repos and worktrees ship only what no remote has (a bundle of unpushed commits and stashes, the uncommitted diff, untracked files and ignored-but-unique files); `node_modules`, `target`, `dist` and other rebuildables are dropped, everything else is re-cloned when needed. Other folders travel whole as gzip tars. Every shipment is SHA-256 checked on the server (and tars recounted) before anything local is deleted; a ledger and a RESTORE.md per shipment say how to get it back. The **guard** (daily scheduled task) moves folders idle for N days and cleans safe caches, so the drive stops growing. |
 | **Health Check** | Junk, startup, outdated apps and disk at a glance; one click cleans only the safe defaults |
 | **Custom Clean** | 40+ rules: Windows temp, recycle bin, thumbnails, crash dumps, WER, Update cache, Store apps, NVIDIA/Discord/VS Code/Steam caches, dev caches, every Chromium browser + Firefox (cache, history, cookies). Linux: apt/dnf cache, journals, rotated logs, /tmp, Proxmox task logs |
 | **Uninstaller** | Runs the real uninstaller (UAC-aware), then hunts leftover folders, shortcuts and registry keys. Leftovers go to the Recycle Bin; registry keys are backed up as `.reg` first. Store apps, dpkg/flatpak/snap on Linux |
@@ -61,10 +62,12 @@ mwm server               Proxmox / ZFS / SMART / Docker
 mwm repair --list        repair tasks            mwm repair sfc
 mwm dupes <dir>          mwm analyze <dir>       mwm shred <file> --yes
 mwm serve [--bind 0.0.0.0:7777] [--read-only]    browser UI
+mwm offload [scan|guard|status]   Move Weight: what could move to your server / one guard pass
 mwm --json <command>     machine-readable output
 ```
 
 ## Safety model
+- Move Weight deletes a folder only after its shipment is verified on your server (SHA-256 of what arrived, file counts inside each tar); a folder that fails any step is kept and reported. A repo whose worktrees are still in use is never moved.
 - Scans never delete. Cleaning only touches caches/temp and skips files in use.
 - Uninstall leftovers → Recycle Bin; registry keys exported to `.reg` before removal. Leftover matching refuses
   generic names, anything containing a program root or your profile, and anything another program still uses.
