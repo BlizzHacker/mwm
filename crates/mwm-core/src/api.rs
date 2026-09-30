@@ -28,7 +28,7 @@ pub fn is_mutating(cmd: &str) -> bool {
         "cleaner_clean" | "app_uninstall" | "leftovers_remove" | "startup_set" | "service_mode" | "update_apply" | "dupes_remove"
             | "shred_paths" | "wipe_free" | "procs_kill" | "files_mkdir" | "files_rename" | "files_transfer" | "files_delete"
             | "files_pack" | "files_unpack" | "files_multi_rename" | "files_write" | "toolkit_run" | "server_action"
-            | "conn_save" | "conn_remove" | "guest_docker_action" | "deploy_node" | "pve_op"
+            | "conn_save" | "conn_remove" | "guest_docker_action" | "deploy_node" | "pve_op" | "pve_create_lxc"
             | "lab_quarantine" | "lab_quarantine_restore" | "lab_quarantine_delete"
             | "arkana_configure" | "arkana_connect_lxc" | "arkana_install" | "arkana_control" | "arkana_tool" | "arkana_analyze"
             | "arr_mcp_configure" | "arr_mcp_call"
@@ -132,6 +132,7 @@ pub fn call(cmd: &str, a: &Value) -> Result<Value, String> {
         "arkana_tool" => e(crate::arkana::tool(&arg::<String>(a, "name")?, a.get("args").unwrap_or(&Value::Null))),
         "arkana_analyze" => e(crate::arkana::analyze(&arg::<String>(a, "path")?)),
         "plugins_list" => e(crate::plugins::list()),
+        "fleet_inventory" => e(crate::fleet_inventory::read()),
         "arr_mcp_status" => ok(crate::mcp_arr::status()),
         "arr_mcp_configure" => e(crate::mcp_arr::configure(&arg::<String>(a, "url")?)),
         "arr_mcp_tools" => e(crate::mcp_arr::tools()),
@@ -139,6 +140,8 @@ pub fn call(cmd: &str, a: &Value) -> Result<Value, String> {
         // Servers (Proxmox / Unraid / ZFS / Docker / SMART)
         "server_info" => e(server::info_on(&arg::<Option<String>>(a, "node")?.unwrap_or_default())),
         "pve_overview" => e(crate::pve::overview()),
+        "pve_provision_options" => e(crate::pve::provision_options()),
+        "pve_create_lxc" => e(crate::pve::create_lxc(a.get("params").unwrap_or(&Value::Null))),
         "lxc_updates_report" => e(crate::lxc_updates::report()),
         "lxc_updates_policy" => e(crate::lxc_updates::policy()),
         "lxc_updates_policy_set" => e(crate::lxc_updates::set_policy(&arg::<Vec<String>>(a, "ids")?)),

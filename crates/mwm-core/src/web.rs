@@ -22,6 +22,7 @@ const FILES: &[(&str, &str, &str)] = &[
     ("toolkit.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/toolkit.js")),
     ("server.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/server.js")),
     ("fleet.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/fleet.js")),
+    ("command.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/command.js")),
     ("ctx.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/ctx.js")),
     ("cluster.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/cluster.js")),
     ("lab.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/lab.js")),
@@ -30,7 +31,8 @@ const FILES: &[(&str, &str, &str)] = &[
     ("vendor/argon2.umd.min.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/vendor/argon2.umd.min.js")),
     ("vault.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/vault.js")),
     ("demo.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/demo.js")),
-    ("favicon.svg", "image/svg+xml", include_str!("../../../assets/mwm-logo.svg")),
+    ("favicon.svg", "image/svg+xml", include_str!("../../../app/ui/favicon.svg")),
+    ("manifest.webmanifest", "application/manifest+json", include_str!("../../../app/ui/manifest.webmanifest")),
 ];
 
 pub(crate) fn random_hex(len: usize) -> String {
@@ -156,7 +158,7 @@ fn handle(mut req: Request, tok: &str, read_only: bool) {
     match FILES.iter().find(|f| f.0 == name) {
         Some((n, ct, body)) => {
             let body = if *n == "index.html" {
-                body.replacen("<head>", "<head>\n  <meta name=\"mwm-web\" content=\"1\">\n  <link rel=\"icon\" href=\"favicon.svg\">", 1)
+                body.replacen("<head>", "<head>\n  <meta name=\"mwm-web\" content=\"1\">", 1)
             } else {
                 body.to_string()
             };

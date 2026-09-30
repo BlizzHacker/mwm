@@ -12,6 +12,7 @@ pub mod disk;
 pub mod drivers;
 pub mod dupes;
 pub mod files;
+pub mod fleet_inventory;
 pub mod jobs;
 pub mod keys;
 pub mod lab;

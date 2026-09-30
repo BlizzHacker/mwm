@@ -294,3 +294,102 @@ mod tests {
         assert!(kind_ok("qemu").is_ok() && kind_ok("docker").is_err());
     }
 }
+
+/// Live, validated choices for an unprivileged LXC created from an existing template.
+/// No arbitrary script or third-party image URL enters this path.
+pub fn provision_options() -> anyhow::Result<Value> {
+    if !available() { bail!("this machine is not a Proxmox VE node"); }
+    let resources = pvesh(&["get", "/cluster/resources"])?;
+    let mut nodes = Vec::new();
+    for resource in resources.as_array().into_iter().flatten() {
+        if resource["type"] != "node" || resource["status"] != "online" { continue; }
+        let name = resource["node"].as_str().unwrap_or("");
+        node_ok(name)?;
+        let stores = pvesh(&["get", &format!("/nodes/{name}/storage")]).unwrap_or(Value::Null);
+        let mut rootfs_storage = Vec::new();
+        let mut templates = Vec::new();
+        for store in stores.as_array().into_iter().flatten() {
+            if store["active"] != 1 || store["enabled"] != 1 { continue; }
+            let id = store["storage"].as_str().unwrap_or("");
+            if node_ok(id).is_err() { continue; }
+            let content = store["content"].as_str().unwrap_or("");
+            if content.split(',').any(|c| c == "rootdir") { rootfs_storage.push(id.to_string()); }
+            if content.split(',').any(|c| c == "vztmpl") {
+                let available = pvesh(&["get", &format!("/nodes/{name}/storage/{id}/content"), "--content", "vztmpl"]).unwrap_or(Value::Null);
+                for template in available.as_array().into_iter().flatten() {
+                    if let Some(volid) = template["volid"].as_str() {
+                        templates.push(json!({"volid": volid, "size": template["size"]}));
+                    }
+                }
+            }
+        }
+        let networks = pvesh(&["get", &format!("/nodes/{name}/network"), "--type", "bridge"]).unwrap_or(Value::Null);
+        let bridges: Vec<String> = networks.as_array().into_iter().flatten()
+            .filter(|v| v["active"] == 1)
+            .filter_map(|v| v["iface"].as_str().map(str::to_string))
+            .collect();
+        nodes.push(json!({"name": name, "templates": templates, "rootfs_storage": rootfs_storage, "bridges": bridges}));
+    }
+    Ok(json!({"nextid": get("/cluster/nextid"), "nodes": nodes}))
+}
+
+fn lxc_param<'a>(p: &'a Value, key: &str) -> anyhow::Result<&'a str> {
+    p.get(key).and_then(Value::as_str).filter(|v| !v.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("missing {key}"))
+}
+
+/// Create a stopped, unprivileged LXC after checking every selected resource
+/// against a fresh Proxmox inventory. Proxmox itself rejects VMID races.
+pub fn create_lxc(p: &Value) -> anyhow::Result<Value> {
+    let node = node_ok(lxc_param(p, "node")?)?;
+    let vmid = id_ok(lxc_param(p, "vmid")?)?;
+    let id: u64 = vmid.parse()?;
+    if !(100..=999_999_999).contains(&id) { bail!("LXC ID must be at least 100"); }
+    let hostname = lxc_param(p, "hostname")?;
+    if hostname.len() > 63 || hostname.starts_with('-') || hostname.ends_with('-')
+        || !hostname.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        bail!("hostname must use letters, digits and hyphens (up to 63 characters)");
+    }
+    let template = lxc_param(p, "template")?;
+    let storage = lxc_param(p, "storage")?;
+    let bridge = lxc_param(p, "bridge")?;
+    let password = lxc_param(p, "password")?;
+    if !(12..=128).contains(&password.len()) || password.chars().any(char::is_control) {
+        bail!("root password must have 12–128 characters and no control characters");
+    }
+    let number = |key: &str, low: u64, high: u64| -> anyhow::Result<u64> {
+        let n = p.get(key).and_then(Value::as_u64).ok_or_else(|| anyhow::anyhow!("missing {key}"))?;
+        if !(low..=high).contains(&n) { bail!("{key} must be between {low} and {high}"); }
+        Ok(n)
+    };
+    let cores = number("cores", 1, 32)?;
+    let memory = number("memory", 256, 131_072)?;
+    let disk = number("disk", 4, 2_048)?;
+    let options = provision_options()?;
+    let choice = options["nodes"].as_array().into_iter().flatten().find(|n| n["name"] == node)
+        .ok_or_else(|| anyhow::anyhow!("selected node is not online"))?;
+    let contains = |key: &str, value: &str| choice[key].as_array().into_iter().flatten()
+        .any(|v| v.as_str() == Some(value) || v["volid"].as_str() == Some(value));
+    if !contains("templates", template) { bail!("template is not available on {node}"); }
+    if !contains("rootfs_storage", storage) { bail!("container storage is not active on {node}"); }
+    if !contains("bridges", bridge) { bail!("network bridge is not active on {node}"); }
+    let resources = pvesh(&["get", "/cluster/resources"])?;
+    if resources.as_array().into_iter().flatten().any(|g| g["vmid"].as_u64() == Some(id)) {
+        bail!("guest ID {vmid} is already in use");
+    }
+    let mut args = vec!["create".to_string(), format!("/nodes/{node}/lxc"),
+        "--vmid".into(), vmid.into(), "--hostname".into(), hostname.into(),
+        "--ostemplate".into(), template.into(), "--rootfs".into(), format!("{storage}:{disk}"),
+        "--cores".into(), cores.to_string(), "--memory".into(), memory.to_string(),
+        "--net0".into(), format!("name=eth0,bridge={bridge},ip=dhcp"),
+        "--unprivileged".into(), "1".into(), "--onboot".into(), "1".into(),
+        "--password".into(), password.into()];
+    if p["nesting"] == true { args.extend(["--features".into(), "nesting=1".into()]); }
+    let argv: Vec<&str> = args.iter().map(String::as_str).collect();
+    let response = pvesh(&argv)?;
+    let title = format!("create LXC {vmid} ({hostname}) on {node}");
+    match upid_of(&response) {
+        Some(upid) => Ok(json!({"job": follow(node, &upid, &title), "upid": upid})),
+        None => Ok(json!({"done": true, "message": format!("{title}: done")})),
+    }
+}
