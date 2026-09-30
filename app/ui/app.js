@@ -152,6 +152,7 @@ const S = {
 const PAGES = [
   { sec: "Overview" },
   { id: "health", label: "Health Check", icon: "health" },
+  { id: "command", label: "Command Center", icon: "server" },
   { id: "fleet", label: "Machines", icon: "server" },
   { sec: "Clean" },
   { id: "offload", label: "Move Weight", icon: "weight" },
@@ -948,5 +949,5 @@ document.addEventListener("DOMContentLoaded", async function boot() {
   $("#elev").className = "elev" + (S.info.elevated ? " admin" : "");
   $("#elev").innerHTML = `<span class="dot"></span>${S.info.elevated ? "Administrator" : `Standard user - <a href="#" data-admin>elevate</a>`}`;
   $("#ver").textContent = `v${S.info.version || ""}${DEMO ? " - web demo" : ""} - ${S.info.hostname || ""}`;
-  go("health");
+  go(WEB ? "command" : "health");
 });

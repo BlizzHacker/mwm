@@ -1,0 +1,11 @@
+{
+  "name": "MWM — Move Weight Manager",
+  "short_name": "MWM",
+  "description": "Your server, LXC, app and domain command center",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0e131d",
+  "theme_color": "#0e131d",
+  "icons": [{"src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}]
+}

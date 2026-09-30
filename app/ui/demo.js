@@ -327,6 +327,64 @@
         { device: "/dev/sdb", model: "ST8000DM004", capacity: 8 * 1000 ** 4, passed: true, temp: 44, hours: 42980, reallocated: 8, pending: 0, rotation: 5425 }],
       docker: { containers: [{ name: "portainer", image: "portainer/portainer-ce", state: "running", status: "Up 3 days" }, { name: "watchtower", image: "containrrr/watchtower", state: "exited", status: "Exited (0) 2 days ago" }], df: [{ type: "Images", size: "4.1GB", reclaimable: "1.2GB (29%)" }, { type: "Build Cache", size: "650MB", reclaimable: "650MB" }] },
     }; },
+    // MWM v5 Command Center: faithful demo dataset mirroring mwm_core::pve / fleet_inventory / plugins.
+    // Demo = offline preview only (no live Proxmox). Returns the same shapes the real backend returns,
+    // so the Command Center (default landing view) renders identically to desktop/server.
+    pve_overview: () => {
+      const g = (vmid, type, name, status, cpu, mb, maxmb, ip) => ({ vmid, type, name, status, cpu, mem: mb * MB, maxmem: maxmb * MB, uptime: status === "running" ? 86400 * 4.2 : 0, node: "pve1", ip });
+      return {
+        cluster: { name: "Slimmm", quorate: 1, version: "8.4.19", online: ["pve1"] },
+        quorate: 1,
+        nodes: [{ name: "pve1", node: "pve1", status: "online", ip: "192.168.0.6", role: "control", health: "healthy", cpu_used_fraction: 0.31, memory_total_bytes: 251 * GB, memory_used_bytes: 78 * GB, disk_total_bytes: 21800 * GB, disk_used_bytes: 14300 * GB }],
+        guests: [
+          g(100, "lxc", "sonarr", "running", 0.06, 1500, 4096, "192.168.0.100"),
+          g(101, "lxc", "jellyfin", "running", 0.12, 814, 32768, "192.168.0.101"),
+          g(104, "lxc", "romm", "running", 0.03, 1800, 16384, "192.168.0.104"),
+          g(107, "lxc", "traefik", "running", 0.01, 220, 1024, "192.168.0.107"),
+          g(126, "lxc", "cleanuparr", "stopped", 0, 0, 1024, "192.168.0.126"),
+          g(200, "qemu", "windows-11", "running", 0.21, 4096, 8192, "192.168.0.200"),
+          g(201, "qemu", "home-assistant", "running", 0.02, 780, 4096, "192.168.0.201"),
+        ],
+        storage: [{ name: "local", type: "dir", status: "active", total: 110 * GB, used: 78 * GB }, { name: "local-lvm", type: "lvmthin", status: "active", total: 4200 * GB, used: 2000 * GB }, { name: "tank", type: "zfspool", status: "active", total: 21800 * GB, used: 14300 * GB }],
+        tasks: [], ha: { enabled: true }, backup_jobs: [{ id: "nightly", enable: 1, mode: "snapshot", storage: "tank", schedule: "daily" }],
+      };
+    },
+    fleet_inventory: () => ({
+      available: true,
+      generated_at: new Date().toISOString(),
+      cluster: { name: "Slimmm", proxmox_host: "192.168.0.6" },
+      nodes: [{ name: "pve1", node: "pve1", status: "online", ip: "192.168.0.190", role: "control", health: "healthy", cpu_used_fraction: 0.31, memory_total_bytes: 251 * GB, memory_used_bytes: 78 * GB, disk_total_bytes: 21800 * GB, disk_used_bytes: 14300 * GB }],
+      containers: [
+        { node: "pve1", vmid: 100, kind: "lxc", name: "sonarr", status: "running", ipv4: "192.168.0.100", role: "media", apps: [{ name: "Sonarr", url: "http://192.168.0.100:8989" }] },
+        { node: "pve1", vmid: 101, kind: "lxc", name: "jellyfin", status: "running", ipv4: "192.168.0.101", role: "media", apps: [{ name: "Jellyfin", url: "http://192.168.0.101:8096" }, { name: "Tautulli", url: "http://192.168.0.101:8181" }] },
+        { node: "pve1", vmid: 104, kind: "lxc", name: "romm", status: "running", ipv4: "192.168.0.104", role: "media", apps: [{ name: "RomM", url: "http://192.168.0.104:8080" }] },
+        { node: "pve1", vmid: 107, kind: "lxc", name: "traefik", status: "running", ipv4: "192.168.0.107", role: "edge", apps: [{ name: "Traefik", url: "http://192.168.0.107:8080" }] },
+        { node: "pve1", vmid: 126, kind: "lxc", name: "cleanuparr", status: "stopped", ipv4: "192.168.0.126", role: "tools" },
+        { node: "pve1", vmid: 200, kind: "lxc", name: "windows-11", status: "running", ipv4: "192.168.0.200", role: "work" },
+      ],
+      routes: [
+        { name: "jellyfin", hostname: "media.moveweight.com", product: "Media", service: "jellyfin", health: "up", entrypoints: ["websecure"], targets: ["192.168.0.101:8096"], target_containers: [{ node: "pve1", vmid: 101, name: "jellyfin" }], migration_state: "live" },
+        { name: "sonarr", hostname: "sonarr.moveweight.com", product: "Media", service: "sonarr", health: "up", targets: ["192.168.0.100:8989"], target_containers: [{ node: "pve1", vmid: 100, name: "sonarr" }], migration_state: "live" },
+      ],
+      services: [{ name: "plex", protocol: "http", source: "traefik", health: "up", targets: [":32400"] }],
+      hestia: {
+        domains: [{ domain: "moveweight.com", owner: "wade", hosting_role: "primary", source: "hestia" }, { domain: "media.moveweight.com", owner: "wade", hosting_role: "media", source: "hestia" }],
+        dns_zones: [{ domain: "moveweight.com", owner: "wade", source: "hestia" }],
+      },
+    }),
+    plugins_list: () => [
+      { plugin: "sonarr", label: "Sonarr", vmid: "100", node: "pve1", state: "running", ip: "192.168.0.100", url: "http://192.168.0.100:8989", info: { reachable: true, version: "4.0.14.2137", branch: "Main", health: 3, queue: 4 } },
+      { plugin: "radarr", label: "Radarr", vmid: "102", node: "pve1", state: "running", ip: "192.168.0.102", url: "http://192.168.0.102:7878", info: { reachable: true, version: "5.18.3.9562", branch: "Main", health: 2, queue: 1 } },
+      { plugin: "jellyfin", label: "Jellyfin", vmid: "101", node: "pve1", state: "running", ip: "192.168.0.101", url: "http://192.168.0.101:8096", info: { reachable: true, version: "10.9.11" } },
+      { plugin: "qbit", label: "qBittorrent", vmid: "103", node: "pve1", state: "running", ip: "192.168.0.103", url: "http://192.168.0.103:8080", info: { reachable: true, version: "v4.6.5" } },
+      { plugin: "cleanuparr", label: "CleanUpArr", vmid: "126", node: "pve1", state: "stopped", ip: "", url: "", info: { reachable: false } },
+    ],
+    pve_provision_options: () => ({
+      nextid: 300,
+      nodes: [{ name: "pve1", templates: [{ volid: "local:vztmpl/debian-12-x86_64", size: 210 * MB }], rootfs_storage: ["local-lvm", "tank", "local"], bridges: ["vmbr0", "vmbr1"] }],
+    }),
+    pve_create_lxc: async (a) => { await wait(800); return { done: true, message: `${(a && a.params && a.params.hostname) || "container"} created (demo)` }; },
+
     server_action: async ({ action, target }) => `${action} ${target}: done (demo)`,
   });
 

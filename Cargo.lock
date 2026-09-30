@@ -2036,7 +2036,7 @@ dependencies = [
 
 [[package]]
 name = "mwm-app"
-version = "4.2.0"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "mwm-core",
@@ -2049,7 +2049,7 @@ dependencies = [
 
 [[package]]
 name = "mwm-cli"
-version = "4.2.0"
+version = "5.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -2061,12 +2061,13 @@ dependencies = [
 
 [[package]]
 name = "mwm-core"
-version = "4.2.0"
+version = "5.0.0"
 dependencies = [
  "aho-corasick",
  "anyhow",
  "base64 0.22.1",
  "blake3",
+ "flate2",
  "getrandom 0.3.4",
  "goblin",
  "md-5",
