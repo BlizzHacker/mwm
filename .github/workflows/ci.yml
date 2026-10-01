@@ -23,3 +23,10 @@ jobs:
           if-no-files-found: error
       - name: UI syntax
         run: for f in app/ui/*.js; do node --check "$f"; done
+      - name: Version parity (web demo vs cargo)
+        run: |
+          CARGO="$(grep -m1 '^version' Cargo.toml | sed -E 's/.*"([0-9.]+)".*/\1/')"
+          DEMO="$(grep -oE 'version: "[0-9.]+"' app/ui/demo.js | head -1 | sed -E 's/.*"([0-9.]+)".*/\1/')"
+          echo "cargo=${CARGO} demo=${DEMO}"
+          test "${CARGO}" = "${DEMO}" || { echo "::error::web demo version (${DEMO}) != Cargo.toml (${CARGO}); keep web demo and desktop in sync"; exit 1; }
+          echo "PARITY_OK"
