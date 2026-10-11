@@ -32,7 +32,7 @@ pub fn status() -> anyhow::Result<Value> {
     let mut on = true;
     let mut keys = Vec::new();
     for k in KEYS {
-        let (code, out) = reg(&["query", k, "/ve"])?;
+        let (code, out) = reg(&["query", k, "/ve"]);
         let active = code == 0 && out.contains(&exe_s);
         on &= active;
         keys.push(json!({"key": k, "active": active}));
