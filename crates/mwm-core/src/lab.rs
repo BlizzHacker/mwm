@@ -716,6 +716,9 @@ pub fn analyze(path: &str) -> anyhow::Result<Analysis> {
     if meta.is_dir() {
         anyhow::bail!("pick a file, not a folder");
     }
+    if meta.len() > MAX_READ as u64 {
+        anyhow::bail!("file is {} bytes - the analyzer handles up to {} MB", meta.len(), MAX_READ >> 20);
+    }
     let mut data = Vec::new();
     use std::io::Read;
     std::fs::File::open(p)?.take(MAX_READ as u64).read_to_end(&mut data)?;
@@ -907,11 +910,19 @@ mod tests {
 
     #[test]
     fn analyzes_own_binary_and_flags_fake_sample() {
+        // Debug test binaries can exceed MAX_READ (ureq+rustls are big); only
+        // do the full structural check when this binary fits under the cap.
         let me = std::env::current_exe().unwrap();
-        let a = analyze(&me.to_string_lossy()).unwrap();
-        assert!(a.format.starts_with("ELF") || a.format.starts_with("PE"), "{}", a.format);
-        assert_eq!(a.sha256.len(), 64);
-        assert!(!a.sections.is_empty());
+        let me_size = std::fs::metadata(&me).map(|m| m.len()).unwrap_or(0);
+        if me_size <= MAX_READ as u64 {
+            let a = analyze(&me.to_string_lossy()).unwrap();
+            assert!(a.format.starts_with("ELF") || a.format.starts_with("PE"), "{}", a.format);
+            assert_eq!(a.sha256.len(), 64);
+            assert!(!a.sections.is_empty());
+        } else {
+            // Oversized binaries must be refused, not silently truncated.
+            assert!(analyze(&me.to_string_lossy()).is_err());
+        }
 
         let p = std::env::temp_dir().join(format!("mwm-lab-{}.txt", std::process::id()));
         std::fs::write(&p, b"powershell -enc AAAA\nhttp://evil.example.top/payload.bin\nvssadmin delete shadows /all\nAsyncClient ServerSignature Pastebin\0").unwrap();
