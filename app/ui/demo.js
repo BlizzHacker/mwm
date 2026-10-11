@@ -90,7 +90,7 @@
   ];
 
   const handlers = {
-    system_info: () => ({ os: "Windows 11 Home 25H2 (web demo)", platform: "windows", hostname: "DEMO-PC", elevated: false, version: "5.0.0", memory_total: 16 * GB, memory_used: 11.2 * GB, cpu: "Intel Core i7-1165G7", cores: 8, uptime_secs: 86400 * 3, disks }),
+    system_info: () => ({ os: "Windows 11 Home 25H2 (web demo)", platform: "windows", hostname: "DEMO-PC", elevated: false, version: "5.1.0", memory_total: 16 * GB, memory_used: 11.2 * GB, cpu: "Intel Core i7-1165G7", cores: 8, uptime_secs: 86400 * 3, disks }),
     cleaner_scan: async () => { await wait(900); return scan.map((x) => ({ ...x })); },
     cleaner_clean: async ({ ids }) => {
       await wait(1200);
@@ -385,6 +385,15 @@
     }),
     pve_create_lxc: async (a) => { await wait(800); return { done: true, message: `${(a && a.params && a.params.hostname) || "container"} created (demo)` }; },
 
+    hestia_users: () => ({ users: [{ user: "admin", name: "Administrator", email: "me@moveweight.com", package: "default", suspended: false, web_domains: 2, dns_domains: 1, disk_mb: 12 }] }),
+    hestia_domains: () => ({ domains: [
+      { user: "admin", domain: "moveweight.com", ip: "192.168.0.161", ssl: true, letsencrypt: true, suspended: false, disk_mb: 48, backend: "default", aliases: ["www.moveweight.com"] },
+      { user: "admin", domain: "media.moveweight.com", ip: "192.168.0.161", ssl: true, letsencrypt: true, suspended: false, disk_mb: 3, backend: "default", aliases: [] },
+    ], errors: [] }),
+    hestia_dns: ({ domain }) => ({ domain, records: [{ id: "1", type: "A", value: "192.168.0.161", ttl: "14400", suspended: false }, { id: "2", type: "CNAME", value: "moveweight.com", ttl: "14400", suspended: false }] }),
+    hestia_action: async ({ action, domain }) => ({ ok: true, action, domain, message: "(demo)" }),
+    hestia_dns_add: async () => ({ ok: true, output: "(demo)" }),
+    hestia_dns_delete: async () => ({ ok: true, output: "(demo)" }),
     server_action: async ({ action, target }) => `${action} ${target}: done (demo)`,
   });
 

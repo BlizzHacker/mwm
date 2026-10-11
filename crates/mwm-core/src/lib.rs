@@ -24,6 +24,7 @@ pub mod mcp_arr;
 pub mod offload;
 pub mod plugins;
 pub mod fsutil;
+pub mod hestia;
 pub mod procs;
 pub mod pve;
 pub mod remote;

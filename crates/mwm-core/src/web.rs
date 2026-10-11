@@ -19,6 +19,7 @@ const FILES: &[(&str, &str, &str)] = &[
     ("app.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/app.js")),
     ("commander.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/commander.js")),
     ("lxc-files.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/lxc-files.js")),
+    ("offload.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/offload.js")),
     ("toolkit.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/toolkit.js")),
     ("server.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/server.js")),
     ("fleet.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/fleet.js")),
@@ -283,5 +284,31 @@ pub fn ra_autostart() {
     let cfg = ra_settings();
     if cfg.enabled {
         let _ = ra_start(&cfg.bind, cfg.read_only);
+    }
+}
+
+/// Every asset index.html references must be embedded here. A missing entry
+/// silently 404s a panel on the server web UI while the desktop works fine.
+#[cfg(test)]
+mod asset_tests {
+    use super::FILES;
+    #[test]
+    fn index_assets_embedded() {
+        let html = include_str!("../../../app/ui/index.html");
+        let mut missing = Vec::new();
+        for needle in ["src=\"", "href=\""] {
+            let mut rest = html;
+            while let Some(i) = rest.find(needle) {
+                rest = &rest[i + needle.len()..];
+                let path = &rest[..rest.find('"').unwrap_or(rest.len())];
+                if path.starts_with("http") || path.starts_with('#') || path.is_empty() {
+                    continue;
+                }
+                if !FILES.iter().any(|(n, _, _)| *n == path) {
+                    missing.push(path.to_string());
+                }
+            }
+        }
+        assert!(missing.is_empty(), "index.html references assets not embedded in mwm serve: {missing:?}");
     }
 }

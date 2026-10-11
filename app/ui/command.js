@@ -1,7 +1,7 @@
 /* MWM v5: one live view of Proxmox, installed apps, routes and Hestia domains. */
 "use strict";
 
-const CENTER = { tab: "fleet", query: "", pve: null, inventory: null, plugins: [], error: [] };
+const CENTER = { tab: "fleet", query: "", pve: null, inventory: null, plugins: [], hestia: null, error: [] };
 const centerArray = (v) => Array.isArray(v) ? v : [];
 const centerSafeUrl = (v) => {
   try { const u = new URL(String(v)); return ["http:", "https:"].includes(u.protocol) ? u.href : ""; }
@@ -16,13 +16,14 @@ VIEWS.command = async function () {
   $("#cc-create").onclick = () => centerCreateServer();
   $("#page").innerHTML = loading("Reading your Proxmox fleet, apps and domains...");
   const requests = await Promise.allSettled([
-    invoke("pve_overview"), invoke("fleet_inventory"), invoke("plugins_list")
+    invoke("pve_overview"), invoke("fleet_inventory"), invoke("plugins_list"), invoke("hestia_domains")
   ]);
   if (current !== "command") return;
   CENTER.pve = requests[0].status === "fulfilled" ? requests[0].value : null;
   CENTER.inventory = requests[1].status === "fulfilled" ? requests[1].value : null;
   CENTER.plugins = requests[2].status === "fulfilled" ? centerArray(requests[2].value) : [];
-  CENTER.error = requests.map((r, i) => r.status === "rejected" ? `${["Proxmox", "Discovery", "App status"][i]}: ${String(r.reason)}` : "").filter(Boolean);
+  CENTER.hestia = requests[3].status === "fulfilled" ? requests[3].value : null;
+  CENTER.error = requests.slice(0, 3).map((r, i) => r.status === "rejected" ? `${["Proxmox", "Discovery", "App status"][i]}: ${String(r.reason)}` : "").filter(Boolean);
   drawCommand();
 };
 
@@ -134,20 +135,79 @@ function drawCenterApps(d) {
 }
 
 function drawCenterDomains(d) {
+  const live = centerArray(CENTER.hestia?.domains);
   const rows = d.routes.flatMap((r) => (centerArray(r.hostnames).length ? r.hostnames : r.hostname ? [r.hostname] : []).map((hostname) => ({ ...r, hostname })));
-  centerSearch(rows, (filtered) => `<div class="grid g2 cc-domain-layout"><div class="card"><div class="spread"><h3>Traefik routes</h3><span class="pill">${filtered.length}</span></div>
-    <div class="scroll cc-table"><table class="table"><thead><tr><th>Hostname</th><th>Product</th><th>Service</th><th>Status</th><th>Target</th></tr></thead><tbody>
-    ${filtered.map((r) => `<tr><td class="cell-main">${esc(r.hostname)}<div class="cell-sub">${esc(r.migration_state || "")}</div></td><td>${esc(r.product || r.owner || "")}</td><td class="mono">${esc(r.service || "")}</td><td>${centerState(r.health === "up" ? "healthy" : r.health === "down" ? "unreachable" : "unknown")}</td><td class="muted">${esc(centerArray(r.target_containers).map((c) => `${c.name || c.vmid} on ${c.node}`).join(", ") || centerArray(r.targets)[0] || "")}</td></tr>`).join("")}</tbody></table></div></div>
-    <div class="card"><div class="spread"><h3>HestiaCP</h3><span class="pill">${d.domains.length} web · ${d.dns.length} DNS</span></div>
-      <p class="muted">Domains remain grouped by owner. Custom-domain migration targets appear here when planned.</p>
-      <div class="scroll cc-table">${d.domains.map((x) => `<div class="cc-hestia-row"><div><strong>${esc(x.domain)}</strong><div class="cell-sub">${esc(String(x.hosting_role || "unclassified").replaceAll("_", " "))}</div></div><span class="pill">${esc(x.owner || "unknown")}</span></div>`).join("") || '<p class="muted">No Hestia inventory is connected.</p>'}</div></div></div>`, "Find hostname, product, service or target...");
+  const byHost = new Map();
+  for (const h of live) byHost.set(h.domain, h);
+  const hestiaList = live.length ? live : d.domains.map((x) => ({ user: x.owner || "admin", domain: x.domain, suspended: false, ssl: false, letsencrypt: false }));
+  const filteredRoutes = CENTER.query ? rows.filter((r) => JSON.stringify(r).toLowerCase().includes(CENTER.query.toLowerCase())) : rows;
+  const filteredHestia = CENTER.query ? hestiaList.filter((h) => JSON.stringify(h).toLowerCase().includes(CENTER.query.toLowerCase())) : hestiaList;
+  const suspended = hestiaList.filter((h) => h.suspended).length;
+  const box = $("#cc-body");
+  box.innerHTML = `<input class="search cc-search" id="cc-search" placeholder="Find hostname, product, service or target..." value="${esc(CENTER.query)}">
+  <div class="grid g2 cc-domain-layout">
+    <div class="card"><div class="spread"><h3>Traefik routes</h3><span class="pill">${filteredRoutes.length}</span></div>
+      <div class="scroll cc-table"><table class="table"><thead><tr><th>Hostname</th><th>Product</th><th>Service</th><th>Status</th><th>Target</th></tr></thead><tbody>
+      ${filteredRoutes.map((r) => `<tr><td class="cell-main">${esc(r.hostname)}<div class="cell-sub">${esc(r.migration_state || "")}</div></td><td>${esc(r.product || r.owner || "")}</td><td class="mono">${esc(r.service || "")}</td><td>${centerState(r.health === "up" ? "healthy" : r.health === "down" ? "unreachable" : "unknown")}</td><td class="muted">${esc(centerArray(r.target_containers).map((c) => `${c.name || c.vmid} on ${c.node}`).join(", ") || centerArray(r.targets)[0] || "")}</td></tr>`).join("")}</tbody></table></div></div>
+    <div class="card"><div class="spread"><h3>HestiaCP ${suspended ? `<span class="pill medium">${suspended} suspended</span>` : ""}</h3><span class="pill">${filteredHestia.length} web · ${d.dns.length} DNS</span></div>
+      <p class="muted">Live from the hosting LXC: suspend, rebuild, Let's Encrypt and DNS per domain. Changes take effect immediately.</p>
+      <div class="scroll cc-table">${filteredHestia.map((x) => `<div class="cc-hestia-row" data-hestia="${esc(x.user)}|${esc(x.domain)}" style="cursor:pointer">
+        <div><strong>${esc(x.domain)}</strong><div class="cell-sub">${esc(x.user || "admin")} · ${x.ip ? esc(x.ip) + " · " : ""}${x.letsencrypt ? "Let's Encrypt" : x.ssl ? "custom SSL" : "no SSL"}${x.disk_mb ? " · " + x.disk_mb + " MB" : ""}</div></div>
+        <span class="pill ${x.suspended ? "medium" : "low"}">${x.suspended ? "suspended" : "active"}</span></div>`).join("") || '<p class="muted">No Hestia domains found.</p>'}</div></div>
+  </div>`;
+  const input = $("#cc-search");
+  input.oninput = () => { CENTER.query = input.value; const pos = input.selectionStart; drawCenterDomains(d); const el = $("#cc-search"); el.focus(); el.setSelectionRange(pos, pos); };
+  $$("[data-hestia]").forEach((el) => (el.onclick = () => { const [u, dm] = el.dataset.hestia.split("|"); hestiaPanel(u, dm); }));
   const products = centerArray(d.inventory?.domain_plan?.products);
-  if (products.length) $("#cc-body").insertAdjacentHTML("afterbegin", `<div class="card cc-plan"><div class="spread"><div><div class="label">Product organization</div><h3>Canonical domains and dedicated LXCs</h3></div><span class="pill">${products.length} products</span></div>
+  if (products.length) box.insertAdjacentHTML("afterbegin", `<div class="card cc-plan"><div class="spread"><div><div class="label">Product organization</div><h3>Canonical domains and dedicated LXCs</h3></div><span class="pill">${products.length} products</span></div>
     <div class="cc-product-grid">${products.map((p) => `<div class="cc-product"><strong>${esc(p.brand || p.id)}</strong><span class="muted">${esc(p.current_primary_domain || "No current domain")}</span>
       <span class="mono">${esc(p.lxc?.node || "")} · LXC ${esc(p.lxc?.vmid || "?")}</span>
       <span class="pill ${p.desired_primary_domain ? "low" : "medium"}">${esc(p.desired_primary_domain || "Future domain unset")}</span>
       <small class="muted">${esc(String(p.migration_state || "").replaceAll("_", " "))}</small></div>`).join("")}</div>
     <p class="muted" style="margin:12px 0 0">This is a plan and inventory. Domain changes need a chosen target and a checked cutover.</p></div>`);
+  centerWireActions();
+}
+
+/** Per-domain HestiaCP manager: actions + DNS records. */
+async function hestiaPanel(user, domain) {
+  const info = centerArray(CENTER.hestia?.domains).find((h) => h.domain === domain) || {};
+  const dns = await guard(() => invoke("hestia_dns", { user, domain }));
+  const records = centerArray(dns?.records);
+  modal(`<h2>${esc(domain)}</h2><p class="muted">HestiaCP · user <b>${esc(user)}</b> · ${info.ip ? esc(info.ip) + " · " : ""}${info.letsencrypt ? "Let's Encrypt active" : info.ssl ? "custom SSL" : "no SSL"}${info.suspended ? " · <span class=danger-t>suspended</span>" : ""}</p>
+    <div class="row" style="flex-wrap:wrap;margin:12px 0">
+      <button class="btn ${info.suspended ? "primary" : ""}" data-hact="${info.suspended ? "unsuspend" : "suspend"}">${info.suspended ? "▶ Unsuspend" : "⏸ Suspend"}</button>
+      <button class="btn" data-hact="rebuild">⟳ Rebuild configs</button>
+      <button class="btn" data-hact="letsencrypt">🔒 Issue Let's Encrypt</button>
+    </div>
+    <div class="spread"><h3>DNS records</h3><button class="btn small" id="hd-add">＋ Add record</button></div>
+    <div class="scroll" style="max-height:40vh"><table class="table"><thead><tr><th style="width:60px">ID</th><th>Type</th><th>Value</th><th>TTL</th><th></th></tr></thead><tbody>
+    ${records.map((r) => `<tr><td class="mono muted">${esc(r.id)}</td><td>${esc(r.type)}</td><td class="mono">${esc(r.value)}</td><td class="muted">${esc(r.ttl)}</td><td><button class="btn small danger" data-hdel="${esc(r.id)}">Delete</button></td></tr>`).join("") || '<tr><td colspan="5" class="muted">No DNS zone for this domain.</td></tr>'}</tbody></table></div>
+    <div id="hd-msg" class="muted" style="margin-top:8px"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn" data-close>Close</button></div>`);
+  const busy = (msg) => { $("#hd-msg").textContent = msg; };
+  $$("[data-hact]").forEach((b) => (b.onclick = async () => {
+    const act = b.dataset.hact;
+    if (act === "suspend" && !(await choose("Suspend domain?", `<p class="muted">${esc(domain)} will stop serving until unsuspended.</p>`, [["go", "Suspend", "danger"]]))) return;
+    b.disabled = true; busy(`Running ${act}...`);
+    const r = await guard(() => invoke("hestia_action", { user, domain, action: act }));
+    if (!r) { b.disabled = false; busy(""); return; }
+    if (r.job) { closeModal(); toast(`${act} started for ${domain}. Follow progress in Activity.`); watchJob(r.job, () => { if (current === "command") VIEWS.command(); }); return; }
+    toast(`${act} done for ${domain}.`);
+    CENTER.hestia = null; closeModal(); VIEWS.command();
+  }));
+  $$("[data-hdel]").forEach((b) => (b.onclick = async () => {
+    if (!(await choose("Delete DNS record?", `<p class="muted">Record ${esc(b.dataset.hdel)} of ${esc(domain)}.</p>`, [["go", "Delete", "danger"]]))) return;
+    await guard(() => invoke("hestia_dns_delete", { user, domain, id: b.dataset.hdel }));
+    toast("Record deleted."); hestiaPanel(user, domain);
+  }));
+  $("#hd-add").onclick = async () => {
+    const type = await ask("Add DNS record", "Type (A, CNAME, TXT, MX...)", "A", "Next");
+    if (!type) return;
+    const value = await ask("Add DNS record", `Value for ${type.toUpperCase()} on ${domain}`, "", "Add");
+    if (!value) return;
+    const r = await guard(() => invoke("hestia_dns_add", { user, domain, type, value }));
+    if (r) { toast("Record added."); hestiaPanel(user, domain); }
+  };
 }
 
 function drawCenterDeploy(d) {
