@@ -155,13 +155,15 @@ fn load_percent(_stat: &str) -> Value {
 #[cfg(not(windows))]
 fn gpu() -> Value {
     // lspci is universal; sysfs DRM adds VRAM/driver where present.
-    let (code, out) = util::run_capture("lspci", &["-mm"]).unwrap_or((1, String::new()));
+    let (code, out) = util::run_capture("lspci", &[]).unwrap_or((1, String::new()));
     let mut gpus = Vec::new();
     if code == 0 {
         for line in out.lines() {
+            // "06:00.0 VGA compatible controller: Matrox ... MGA G200e (rev 02)"
             if line.contains("VGA compatible controller") || line.contains("3D controller") || line.contains("Display controller") {
-                let fields: Vec<&str> = line.splitn(4, ' ').collect();
-                let name = fields.get(3).map(|s| s.trim_matches('"')).unwrap_or(line);
+                let name = line.splitn(2, ": ").nth(1)
+                    .map(|n| n.split(" (rev").next().unwrap_or(n).trim())
+                    .unwrap_or(line);
                 gpus.push(json!({"name": name, "source": "lspci"}));
             }
         }
