@@ -894,6 +894,7 @@ VIEWS.about = function () {
         <tr><td class="muted">Up since</td><td>${i.uptime_secs ? new Date(Date.now() - i.uptime_secs * 1000).toLocaleString() : ""}</td></tr>
       </tbody></table></div>
     ${WEB || TARGET ? "" : `<div class="card" style="grid-column:1/-1" id="ra-card"><div class="label">Remote access</div><div class="muted" style="margin-top:6px">Loading...</div></div>`}
+    <div class="card" style="grid-column:1/-1" id="upd-check-card"><div class="spread"><div><div class="label">Updates</div><h3 style="margin:6px 0 2px">App version</h3><div class="muted">You are running v${esc(i.version || "?")}. Check GitHub for the newest MWM release.</div></div><button class="btn primary" id="upd-check">Check for updates</button></div><div id="upd-check-result"></div></div>
     <div class="card" style="grid-column:1/-1"><div class="label" style="margin-bottom:8px">How MWM keeps you safe</div>
       <ul class="muted" style="margin:0;padding-left:18px;line-height:1.8">
         <li>Scans never delete anything. Cleaning only touches caches and temp files, and skips anything in use.</li>
@@ -902,7 +903,35 @@ VIEWS.about = function () {
         <li>Updates come from winget (the publisher's own installers); drivers only from Windows Update or the maker.</li>
       </ul></div></div>`;
   drawRemoteAccess();
+  drawUpdateCheck();
 };
+
+// ------------------------------------------------- app update check ----
+function drawUpdateCheck() {
+  const btn = $("#upd-check");
+  const out = $("#upd-check-result");
+  if (!btn || !out) return;
+  btn.onclick = async () => {
+    btn.disabled = true;
+    out.innerHTML = '<div class="muted" style="margin-top:10px"><span class="spin sm"></span> Asking GitHub for the latest release...</div>';
+    try {
+      const r = await invoke("app_latest_release");
+      const newer = r.update_available;
+      const notes = (r.notes || "").trim().split("\n").slice(0, 6).map(esc).join("<br>");
+      out.innerHTML = `<div class="note" style="margin-top:12px">
+        <div class="spread"><div>${newer ? `<b>New version available: ${esc(r.tag)}</b><div class="muted">Published ${r.published ? new Date(r.published).toLocaleString() : ""}</div>` : `<span class="pill low">Up to date</span> <span class="muted">${esc(r.tag)} is the latest release (${r.published ? new Date(r.published).toLocaleDateString() : ""}).</span>`}</div>
+        ${newer ? `<div class="row"><a class="btn primary" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">Open release ↗</a>${DEMO || TARGET ? "" : `<button class="btn" id="upd-open">Open in browser</button>`}</div>` : ""}</div>
+        ${notes ? `<details style="margin-top:8px"><summary class="muted">Release notes</summary><div class="muted" style="margin-top:6px;line-height:1.7">${notes}</div></details>` : ""}
+        <div class="cell-sub" style="margin-top:8px">${TARGET ? "This checks the machine you are managing." : (S.info || {}).platform === "windows" ? "Windows: the MWM Portable Updater task also installs new releases automatically (checksum-verified) when the app is closed." : "Servers: mwm-self-update installs new releases automatically from the verified GitHub release."}</div></div>`;
+      const open = $("#upd-open");
+      if (open && newer) open.onclick = () => localInvoke("open_default", { path: r.url });
+      if (newer) toast(`MWM ${r.tag} is available.`);
+    } catch (e) {
+      out.innerHTML = `<div class="note warn-n" style="margin-top:12px">Couldn't reach GitHub: ${esc(String(e))}</div>`;
+    }
+    btn.disabled = false;
+  };
+}
 
 // ------------------------------------------------------ remote access ----
 async function drawRemoteAccess() {

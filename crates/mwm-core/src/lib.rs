@@ -26,6 +26,7 @@ pub mod plugins;
 pub mod fsutil;
 pub mod hestia;
 pub mod procs;
+pub mod release;
 pub mod pve;
 pub mod remote;
 pub mod server;

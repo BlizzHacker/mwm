@@ -14,7 +14,7 @@ blake3.workspace = true
 sysinfo.workspace = true
 trash.workspace = true
 tiny_http = "0.12"
-ureq = { version = "2", default-features = false, features = ["json"] }
+ureq = { version = "2", default-features = false, features = ["json", "tls"] }
 aho-corasick = "1"
 regex = "1"
 goblin = "0.10"

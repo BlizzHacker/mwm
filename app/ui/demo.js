@@ -90,7 +90,7 @@
   ];
 
   const handlers = {
-    system_info: () => ({ os: "Windows 11 Home 25H2 (web demo)", platform: "windows", hostname: "DEMO-PC", elevated: false, version: "5.1.0", memory_total: 16 * GB, memory_used: 11.2 * GB, cpu: "Intel Core i7-1165G7", cores: 8, uptime_secs: 86400 * 3, disks }),
+    system_info: () => ({ os: "Windows 11 Home 25H2 (web demo)", platform: "windows", hostname: "DEMO-PC", elevated: false, version: "5.2.0", memory_total: 16 * GB, memory_used: 11.2 * GB, cpu: "Intel Core i7-1165G7", cores: 8, uptime_secs: 86400 * 3, disks }),
     cleaner_scan: async () => { await wait(900); return scan.map((x) => ({ ...x })); },
     cleaner_clean: async ({ ids }) => {
       await wait(1200);
@@ -385,6 +385,7 @@
     }),
     pve_create_lxc: async (a) => { await wait(800); return { done: true, message: `${(a && a.params && a.params.hostname) || "container"} created (demo)` }; },
 
+    app_latest_release: async () => { await wait(600); return { tag: "v5.1.0", url: "https://github.com/BlizzHacker/mwm/releases/latest", published: new Date().toISOString(), notes: "- Unified server web UI\n- Live HestiaCP management", current: "5.1.0", update_available: false, assets: [] }; },
     hestia_users: () => ({ users: [{ user: "admin", name: "Administrator", email: "me@moveweight.com", package: "default", suspended: false, web_domains: 2, dns_domains: 1, disk_mb: 12 }] }),
     hestia_domains: () => ({ domains: [
       { user: "admin", domain: "moveweight.com", ip: "192.168.0.161", ssl: true, letsencrypt: true, suspended: false, disk_mb: 48, backend: "default", aliases: ["www.moveweight.com"] },

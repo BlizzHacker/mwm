@@ -133,6 +133,7 @@ pub fn call(cmd: &str, a: &Value) -> Result<Value, String> {
         "arkana_tool" => e(crate::arkana::tool(&arg::<String>(a, "name")?, a.get("args").unwrap_or(&Value::Null))),
         "arkana_analyze" => e(crate::arkana::analyze(&arg::<String>(a, "path")?)),
         "plugins_list" => e(crate::plugins::list()),
+        "app_latest_release" => e(crate::release::latest()),
         "fleet_inventory" => e(crate::fleet_inventory::read()),
         "arr_mcp_status" => ok(crate::mcp_arr::status()),
         "arr_mcp_configure" => e(crate::mcp_arr::configure(&arg::<String>(a, "url")?)),
