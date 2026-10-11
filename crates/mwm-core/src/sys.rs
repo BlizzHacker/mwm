@@ -101,6 +101,18 @@ pub fn is_elevated() -> bool {
         .unwrap_or_else(|| crate::util::run_capture("id", &["-u"]).map(|(_, o)| o.trim() == "0").unwrap_or(false))
 }
 
+/// Folder MWM was asked to open (CLI arg or second-instance forward from the
+/// Explorer takeover). The UI picks it up once via `pending_open_dir`.
+static PENDING_DIR: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+pub fn set_pending_dir(d: String) {
+    if let Ok(mut g) = PENDING_DIR.lock() { *g = Some(d); }
+}
+
+pub fn take_pending_dir() -> Option<String> {
+    PENDING_DIR.lock().ok().and_then(|mut g| g.take())
+}
+
 /// Start this same executable again with administrator rights (UAC prompt).
 #[cfg(windows)]
 pub fn relaunch_elevated(args: &str) -> anyhow::Result<()> {

@@ -33,6 +33,8 @@ pub fn is_mutating(cmd: &str) -> bool {
             | "arkana_configure" | "arkana_connect_lxc" | "arkana_install" | "arkana_control" | "arkana_tool" | "arkana_analyze"
             | "arr_mcp_configure" | "arr_mcp_call"
             | "hestia_action" | "hestia_dns_add" | "hestia_dns_delete"
+            | "rescue_fetch" | "integrity_baseline" | "integrity_verify"
+            | "explorer_takeover_set"
             | "lxc_fs_write" | "lxc_fs_mkdir" | "lxc_fs_delete" | "lxc_updates_policy_set" | "lxc_updates_scan" | "lxc_updates_apply" | "pve_updates_policy_set" | "pve_updates_scan" | "pve_updates_apply" | "docker_updates_policy_set" | "docker_updates_scan" | "docker_updates_apply"
             | "vault_store"
             | "offload_policy_set" | "offload_run" | "offload_guard_now"
@@ -146,6 +148,18 @@ pub fn call(cmd: &str, a: &Value) -> Result<Value, String> {
         "hestia_action" => e(crate::hestia::action(&arg::<String>(a, "user")?, &arg::<String>(a, "domain")?, &arg::<String>(a, "action")?)),
         "hestia_dns_add" => e(crate::hestia::dns_add(&arg::<String>(a, "user")?, &arg::<String>(a, "domain")?, &arg::<String>(a, "type")?, &arg::<String>(a, "value")?)),
         "hestia_dns_delete" => e(crate::hestia::dns_delete(&arg::<String>(a, "user")?, &arg::<String>(a, "domain")?, &arg::<String>(a, "id")?)),
+        // Rescue catalog (MRI replacement), integrity (FMOD), hardware (CPU-Z/GPU-Z)
+        "rescue_catalog" => ok(crate::rescue::catalog()),
+        "rescue_fetch" => e(crate::rescue::fetch(&arg::<String>(a, "id")?)),
+        "rescue_locate" => e(crate::rescue::locate(&arg::<String>(a, "id")?)),
+        "integrity_status" => ok(crate::integrity::status()),
+        "integrity_baseline" => e(crate::integrity::baseline(arg::<Option<Vec<String>>>(a, "roots")?)),
+        "integrity_verify" => e(crate::integrity::verify()),
+        "hardware_overview" => ok(crate::hardware::overview()),
+        // Windows Explorer takeover + deep-link into Commander
+        "explorer_takeover_status" => e(crate::explorer::status()),
+        "explorer_takeover_set" => e(crate::explorer::set_takeover(arg::<bool>(a, "enabled")?)),
+        "pending_open_dir" => ok(crate::sys::take_pending_dir().unwrap_or_default()),
         // Servers (Proxmox / Unraid / ZFS / Docker / SMART)
         "server_info" => e(server::info_on(&arg::<Option<String>>(a, "node")?.unwrap_or_default())),
         "pve_overview" => e(crate::pve::overview()),

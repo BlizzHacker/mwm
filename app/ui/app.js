@@ -174,6 +174,7 @@ const PAGES = [
   { id: "repair", label: "Repair", icon: "wrench" },
   { id: "security", label: "Security", icon: "shield" },
   { id: "lab", label: "Malware Lab", icon: "shield" },
+  { id: "rescue", label: "Rescue Center", icon: "shield" },
   { id: "network", label: "Network", icon: "net" },
   { id: "events", label: "Crashes & Events", icon: "alert" },
   { id: "server", label: "Server / NAS", icon: "server" },
@@ -873,9 +874,32 @@ VIEWS.tools = function () {
     ["winupdate", "Windows Update", "OS updates"],
     ["regedit", "Registry Editor", "For experts"],
   ];
-  $("#page").innerHTML = `<p class="muted" style="margin-top:0">Shortcuts to the tools already built into Windows.</p>
+  $("#page").innerHTML = `${DEMO || TARGET || S.info?.platform !== "windows" ? "" : `<div class="card" id="tk-card" style="margin-bottom:14px"><div class="spread"><div><div class="label">File Explorer takeover</div><h3 style="margin:6px 0 2px">Open folders in MWM Commander</h3>
+      <div class="muted">Double-clicking any folder or drive in Windows opens MWM Commander instead of File Explorer. Commander does everything Explorer does - copy/cut/paste, rename, search, pack - plus dual panes, multi-rename, folder sizes, malware analysis and Recycle-safe delete. Per-user registry only, fully reversible.</div></div>
+      <button class="toggle" id="tk-toggle" title="Takeover"></button></div><div id="tk-msg" class="cell-sub" style="margin-top:8px"></div></div>`}
+    <p class="muted" style="margin-top:0">Shortcuts to the tools already built into Windows.</p>
     <div class="grid g4">${tools.map(([k, n, d]) => `<div class="card tool" data-tool="${k}">${icon("tools")}<b>${esc(n)}</b><span class="muted" style="font-size:12.5px">${esc(d)}</span></div>`).join("")}</div>`;
+  if (!DEMO && !TARGET && S.info?.platform === "windows") drawTakeover();
 };
+
+// ------------------------------------------- Explorer takeover panel ----
+async function drawTakeover() {
+  const t = $("#tk-toggle");
+  if (!t) return;
+  const st = await localInvoke("explorer_takeover_status").catch(() => null);
+  if (!st || !st.available) { const m = $("#tk-msg"); if (m) m.textContent = "Not available here."; return; }
+  t.className = "toggle" + (st.enabled ? " on" : "");
+  const msg = $("#tk-msg");
+  msg.innerHTML = st.enabled
+    ? '<span class="pill low">Active</span> <span class="muted">Folders and drives now open in MWM Commander. Turn this off to hand them back to File Explorer instantly.</span>'
+    : '<span class="muted">Off - Windows File Explorer opens folders as usual.</span>';
+  t.onclick = async () => {
+    const want = !st.enabled;
+    if (want && !(await choose("Take over folder opening?", '<p class="muted">After this, double-clicking a folder or drive opens MWM Commander instead of File Explorer. Explorer itself keeps working (Win+E, desktop, taskbar). You can undo this any time from Tools.</p>', [["go", "Take over", "primary"]]))) return;
+    const r = await guard(() => localInvoke("explorer_takeover_set", { enabled: want }));
+    if (r) { toast(r.enabled ? "MWM Commander now opens folders." : "File Explorer restored."); drawTakeover(); }
+  };
+}
 
 // ============================================================== ABOUT ====
 VIEWS.about = function () {
@@ -978,5 +1002,9 @@ document.addEventListener("DOMContentLoaded", async function boot() {
   $("#elev").className = "elev" + (S.info.elevated ? " admin" : "");
   $("#elev").innerHTML = `<span class="dot"></span>${S.info.elevated ? "Administrator" : `Standard user - <a href="#" data-admin>elevate</a>`}`;
   $("#ver").textContent = `v${S.info.version || ""}${DEMO ? " - web demo" : ""} - ${S.info.hostname || ""}`;
+  if (!WEB && !DEMO && !TARGET) {
+    const pending = await localInvoke("pending_open_dir").catch(() => null);
+    if (pending) { go("files"); setTimeout(() => loadPane(CMD.panes[0], pending, false), 350); return; }
+  }
   go(WEB ? "command" : "health");
 });

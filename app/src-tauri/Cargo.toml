@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 mwm-core = { path = "../../crates/mwm-core" }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2"
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true

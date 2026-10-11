@@ -90,7 +90,7 @@
   ];
 
   const handlers = {
-    system_info: () => ({ os: "Windows 11 Home 25H2 (web demo)", platform: "windows", hostname: "DEMO-PC", elevated: false, version: "5.2.0", memory_total: 16 * GB, memory_used: 11.2 * GB, cpu: "Intel Core i7-1165G7", cores: 8, uptime_secs: 86400 * 3, disks }),
+    system_info: () => ({ os: "Windows 11 Home 25H2 (web demo)", platform: "windows", hostname: "DEMO-PC", elevated: false, version: "5.3.0", memory_total: 16 * GB, memory_used: 11.2 * GB, cpu: "Intel Core i7-1165G7", cores: 8, uptime_secs: 86400 * 3, disks }),
     cleaner_scan: async () => { await wait(900); return scan.map((x) => ({ ...x })); },
     cleaner_clean: async ({ ids }) => {
       await wait(1200);
@@ -386,6 +386,27 @@
     pve_create_lxc: async (a) => { await wait(800); return { done: true, message: `${(a && a.params && a.params.hostname) || "container"} created (demo)` }; },
 
     app_latest_release: async () => { await wait(600); return { tag: "v5.1.0", url: "https://github.com/BlizzHacker/mwm/releases/latest", published: new Date().toISOString(), notes: "- Unified server web UI\n- Live HestiaCP management", current: "5.1.0", update_available: false, assets: [] }; },
+    rescue_catalog: () => ({ platform: "windows", tools: [
+      { id: "fmod", name: "System file integrity (FMOD replacement)", replaces: "MRI FMOD.exe", category: "Diagnostics", kind: "builtin", platform: "any", target: "rescue-integrity", license: "MWM", notes: "Baseline + drift scan of system files on Windows, Linux and macOS.", installed: false },
+      { id: "face", name: "Health scan", replaces: "MRI FACE.exe / full scan", category: "Diagnostics", kind: "builtin", platform: "any", target: "health", license: "MWM", notes: "One-click health scan: junk, updates, startup, security.", installed: false },
+      { id: "memtest", name: "Memtest86+", replaces: "EZBOOT/MEMTEST.IMG (2011)", category: "Diagnostics", kind: "bundled", platform: "any", target: "https://memtest.org/", license: "GPL-2.0", notes: "Boots as its own entry on both rescue ISOs.", installed: false },
+      { id: "testdisk", name: "TestDisk + PhotoRec", replaces: "Seagate Recovery Suite / data recovery", category: "Disk & data", kind: "bundled", platform: "any", target: "https://www.cgsecurity.org/wiki/TestDisk_Download", license: "GPL-2.0", notes: "Partition recovery + file carving; replaces the Seagate suite.", installed: false },
+      { id: "stinger", name: "McAfee Stinger", replaces: "Malware/Core Scanners", category: "Malware", kind: "download", platform: "windows", target: "https://www.mcafee.com/en-us/consumer-corporate/mcafee-labs/free-tools/stinger.html", license: "Freeware", notes: "On-demand targeted malware remover; fetched from McAfee when used.", installed: false },
+      { id: "clonezilla", name: "Clonezilla", replaces: "Acronis TrueImage", category: "Disk & data", kind: "download", platform: "linux", target: "https://clonezilla.org/downloads", license: "GPL-2.0", notes: "Imaging/cloning replacing licensed Acronis; bootable on Linux disc.", installed: false },
+    ] }),
+    integrity_status: () => ({ available: true, created: Math.floor(Date.now() / 1000) - 86400, roots: ["C:\\Windows\\System32"], files: 41233 }),
+    integrity_baseline: () => fakeJob("integrity", "Create integrity baseline", "rescue", 4000, () => "Baseline created: 41233 files", ["C:\Windows\System32\kernel32.dll", "C:\Windows\System32\ntdll.dll"]),
+    integrity_verify: () => fakeJob("integrity", "Verify system file integrity", "rescue", 3500, () => "2 difference(s)", [JSON.stringify({ state: "changed", path: "C:\Windows\System32\drivers\etc\hosts" }), JSON.stringify({ state: "added", path: "C:\Windows\System32\mwm-helper.dll" }), JSON.stringify({ state: "summary", changed: 1, vanished: 0, added: 1, scanned: 41233 })]),
+    rescue_fetch: async ({ id }) => ({ ok: true, id, dir: "C:\\demo\\rescue\\" + id, saved: [{ vendor_page: "https://example.test", direct_links: ["https://example.test/tool.exe"] }] }),
+    rescue_locate: async ({ id }) => ({ id, kind: "download", target: "", dir: "C:\\demo\\rescue\\" + id, files: [{ name: "vendor.html", size: 48213, path: "" }] }),
+    explorer_takeover_status: () => ({ available: true, enabled: false, exe: "C:\\demo\\MoveWeightManager.exe", keys: [] }),
+    explorer_takeover_set: async ({ enabled }) => { await wait(400); return { available: true, enabled, exe: "C:\\demo\\MoveWeightManager.exe", keys: [] }; },
+    pending_open_dir: () => null,
+    hardware_overview: () => ({ platform: "windows", cpu: { name: "AMD Ryzen 9 7950X 16-Core Processor (demo)", cores: 16, threads: 32, max_mhz: 4500, current_mhz: 5213, load_percent: 12, vendor: "Advanced Micro Devices", socket: "AM5" },
+      gpu: [{ name: "NVIDIA GeForce RTX 4090 (demo)", vram_mb: "24564", temp_c: "58", util_percent: "21", clock_mhz: "2520", power_w: "112.4", driver: "566.36", source: "nvidia-smi" }],
+      sensors: { temps: [{ name: "CPU Package", temp_c: 61.2 }, { name: "GPU Core", temp_c: 58.0 }], fans: [{ name: "cpu_fan", rpm: 1240 }], note: "" },
+      memory: { sticks: [{ slot: "DIMM_A1", size_bytes: 32 * GB, speed_mts: 6000, vendor: "G.Skill", part: "F5-6000J3038F16G" }, { slot: "DIMM_B1", size_bytes: 32 * GB, speed_mts: 6000, vendor: "G.Skill", part: "F5-6000J3038F16G" }] },
+      motherboard: { manufacturer: "ASUS", product: "ROG CROSSHAIR X670E HERO", bios_vendor: "American Megatrends", bios_version: "2403" } }),
     hestia_users: () => ({ users: [{ user: "admin", name: "Administrator", email: "me@moveweight.com", package: "default", suspended: false, web_domains: 2, dns_domains: 1, disk_mb: 12 }] }),
     hestia_domains: () => ({ domains: [
       { user: "admin", domain: "moveweight.com", ip: "192.168.0.161", ssl: true, letsencrypt: true, suspended: false, disk_mb: 48, backend: "default", aliases: ["www.moveweight.com"] },
