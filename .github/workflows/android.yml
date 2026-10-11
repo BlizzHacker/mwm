@@ -1,0 +1,67 @@
+# Android APK/AAB builds for Play Store / sideload submission.
+# Runs on tags (vX.Y.Z) alongside the desktop release workflow.
+# Signing uses repo secrets: ANDROID_KEYSTORE (base64 PKCS12),
+# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS.
+name: android
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android,i686-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+      - name: Install NDK
+        run: sdkmanager --install "ndk;27.0.12077973" >/dev/null
+      - run: cargo install tauri-cli --version "^2" --locked
+      - name: Restore signing keystore
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          mkdir -p ~/.android
+          echo "$ANDROID_KEYSTORE" | base64 -d > ~/.android/mwm-release.p12
+          {
+            echo "password=$ANDROID_KEYSTORE_PASSWORD"
+            echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
+            echo "keyAlias=$ANDROID_KEY_ALIAS"
+            echo "storeFile=$HOME/.android/mwm-release.p12"
+          } > keystore.properties
+          echo keystore.properties written
+      - name: Init Android project + build
+        working-directory: app/src-tauri
+        run: |
+          cargo tauri android init
+          # keystore.properties must live in the generated gradle project
+          cp ../../keystore.properties gen/android/keystore.properties
+          cargo tauri android build --apk --aab
+      - name: Collect artifacts
+        run: |
+          mkdir -p out
+          find app/src-tauri/gen/android -name '*.apk' -exec cp {} out/ \;
+          find app/src-tauri/gen/android -name '*.aab' -exec cp {} out/ \;
+          ls -la out/
+          cd out && sha256sum * > SHA256SUMS-android
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          overwrite_files: true
+          files: |
+            out/*.apk
+            out/*.aab
+            out/SHA256SUMS-android
