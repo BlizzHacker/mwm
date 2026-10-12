@@ -115,7 +115,7 @@ pub fn remove(paths: &[String]) -> (Vec<String>, Vec<(String, String)>) {
     let mut ok = Vec::new();
     let mut bad = Vec::new();
     for p in paths {
-        match trash::delete(p) {
+        match crate::recycle::delete(p) {
             Ok(()) => ok.push(p.clone()),
             Err(e) => bad.push((p.clone(), e.to_string())),
         }

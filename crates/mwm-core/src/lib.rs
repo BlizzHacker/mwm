@@ -30,6 +30,7 @@ pub mod hardware;
 pub mod integrity;
 pub mod rescue;
 pub mod procs;
+pub mod recycle;
 pub mod release;
 pub mod pve;
 pub mod remote;

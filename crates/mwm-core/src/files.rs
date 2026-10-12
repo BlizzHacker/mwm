@@ -365,7 +365,7 @@ pub fn delete(paths: Vec<String>, permanent: bool) -> u64 {
                 let pp = Path::new(p);
                 if pp.is_dir() { fs::remove_dir_all(pp).map_err(|e| e.to_string()) } else { fs::remove_file(pp).map_err(|e| e.to_string()) }
             } else {
-                trash::delete(p).map_err(|e| e.to_string())
+                crate::recycle::delete(p).map_err(|e| e.to_string())
             };
             match r {
                 Ok(()) => job.progress(0, 1, ""),

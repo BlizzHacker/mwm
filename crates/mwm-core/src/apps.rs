@@ -226,7 +226,7 @@ fn scan_dirs(app: &App, all: &[App], roots: &[PathBuf], extra_files: &[(PathBuf,
 pub fn remove_files_to_trash(items: &[Leftover]) -> RemoveReport {
     let mut rep = RemoveReport { removed: vec![], failed: vec![], backup: None };
     for it in items.iter().filter(|i| i.kind != "regkey") {
-        match trash::delete(&it.path) {
+        match crate::recycle::delete(&it.path) {
             Ok(()) => rep.removed.push(it.path.clone()),
             Err(e) => rep.failed.push((it.path.clone(), e.to_string())),
         }
@@ -692,7 +692,7 @@ mod platform {
     }
 
     pub fn uninstall(app: &App, _quiet: bool) -> Outcome {
-        match trash::delete(&app.install_location) {
+        match crate::recycle::delete(&app.install_location) {
             Ok(()) => Outcome { ok: true, code: 0, message: "Moved to Trash.".into() },
             Err(e) => Outcome { ok: false, code: -1, message: e.to_string() },
         }

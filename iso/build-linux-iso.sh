@@ -46,9 +46,23 @@ rsync
 nmap
 EOF
 
+# Stage the MWM static binary + rescue service into the live filesystem.
+# live-build reads config/includes.chroot/ (NOT a bare files/ tree).
+mkdir -p config/includes.chroot/usr/local/bin
+mkdir -p config/includes.chroot/etc/systemd/system/multi-user.target.wants
+cp -f files/usr/local/bin/mwm config/includes.chroot/usr/local/bin/mwm
+chmod 755 config/includes.chroot/usr/local/bin/mwm
+if [ -f files/etc/systemd/system/mwm-rescue.service ]; then
+  cp -f files/etc/systemd/system/mwm-rescue.service config/includes.chroot/etc/systemd/system/mwm-rescue.service
+  ln -sf ../mwm-rescue.service config/includes.chroot/etc/systemd/system/multi-user.target.wants/mwm-rescue.service
+fi
+
 lb build 2>&1 | tail -6
 mkdir -p out
-cp -f live-image-amd64.hybrid.iso out/MWM-Rescue-Linux.iso
+# --image-name changes the produced filename; accept either name.
+ISO_SRC="$(ls -t *.hybrid.iso live-image-amd64.hybrid.iso 2>/dev/null | head -1)"
+[ -n "$ISO_SRC" ] || { echo "ERROR: no hybrid iso produced"; exit 1; }
+cp -f "$ISO_SRC" out/MWM-Rescue-Linux.iso
 sha256sum out/MWM-Rescue-Linux.iso > out/MWM-Rescue-Linux.iso.sha256
 ls -la out/
 echo LINUX-ISO-DONE

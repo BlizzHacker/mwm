@@ -11,6 +11,7 @@
 use anyhow::bail;
 use serde_json::{json, Value};
 
+#[cfg(windows)]
 use crate::util;
 
 /// The shell verbs that fire when a user opens a folder or a drive.
