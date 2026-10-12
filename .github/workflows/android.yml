@@ -26,9 +26,14 @@ jobs:
           java-version: 17
       - name: Accept SDK licenses and install NDK
         run: |
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager --install "ndk;27.0.12077973"
+          set -x
+          SDKM="$(ls -d $ANDROID_HOME/cmdline-tools/*/bin/sdkmanager 2>/dev/null | tail -1)"
+          [ -n "$SDKM" ] || { echo 'sdkmanager not found'; exit 1; }
+          yes | "$SDKM" --licenses >/dev/null || true
+          "$SDKM" --install "ndk;27.0.12077973" "platforms;android-34" "build-tools;34.0.0"
           echo "NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/cmdline-tools/$(basename $(dirname $(dirname $SDKM)))/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
       - run: cargo install tauri-cli --version "^2" --locked
