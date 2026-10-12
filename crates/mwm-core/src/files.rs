@@ -427,37 +427,122 @@ pub fn unpack(archive: String, dest: String) -> u64 {
 /// containing `text`. Hits stream into the job's output.
 pub fn search(root: String, pattern: String, text: String) -> u64 {
     jobs::start("search", &format!("Search \"{}\" in {}", if pattern.is_empty() { &text } else { &pattern }, root), "files", move |job| {
+        // ripgrep-grade parallel walk: one thread per core, crossbeam-free
+        // streaming through the job's own mutex-protected line buffer.
+        use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+        use std::sync::Arc;
+
         let pat = pattern.trim().to_lowercase();
         let glob = if pat.is_empty() { "*".to_string() } else if pat.contains(['*', '?']) { pat } else { format!("*{pat}*") };
         let needle = text.to_lowercase();
-        let mut hits = 0u64;
-        for e in WalkDir::new(&root).follow_links(false).into_iter().flatten() {
-            if job.cancelled() {
-                break;
-            }
-            let name = e.file_name().to_string_lossy();
-            if !fsutil::glob_match(&glob, &name) {
-                continue;
-            }
-            if !needle.is_empty() {
-                if !e.file_type().is_file() || e.metadata().map(|m| m.len() > 50 << 20).unwrap_or(true) {
-                    continue;
+        let want_text = !needle.is_empty();
+
+        let hits = Arc::new(AtomicU64::new(0));
+        let stop = Arc::new(AtomicBool::new(false));
+        let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).min(16);
+
+        let mut builder = ignore::WalkBuilder::new(&root);
+        builder
+            .threads(threads)
+            .follow_links(false)
+            .hidden(false)          // a file finder must find dotfiles
+            .git_ignore(false)      // ... and ignored build dirs
+            .git_global(false)
+            .git_exclude(false)
+            .max_depth(None);
+
+        // Parallel walk with per-entry filter; report through shared counters.
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        let hits_w = Arc::clone(&hits);
+        let stop_w = Arc::clone(&stop);
+        std::thread::scope(|scope| {
+            // Consumer: drains hits into the job output (single writer).
+            let job_w = job.clone();
+            let stop_c = Arc::clone(&stop_w);
+            scope.spawn(move || {
+                for path in rx {
+                    job_w.line(path);
+                    if job_w.cancelled() {
+                        stop_c.store(true, Ordering::Relaxed);
+                        break;
+                    }
                 }
-                let Ok(bytes) = fs::read(e.path()) else { continue };
-                if !String::from_utf8_lossy(&bytes).to_lowercase().contains(&needle) {
-                    continue;
-                }
-            }
-            hits += 1;
-            job.line(e.path().to_string_lossy().to_string());
-            job.progress(0, 1, &e.path().to_string_lossy());
-            if hits >= 5000 {
-                job.line("... stopped at 5000 results");
-                break;
-            }
+            });
+            // Walkers stream matching paths into the channel; run() blocks
+            // until every walker finishes and its sender clone drops.
+            builder.build_parallel().run(|| {
+                let tx = tx.clone();
+                let hits = Arc::clone(&hits_w);
+                let stop = Arc::clone(&stop_w);
+                let job_p = job.clone();
+                let glob = glob.clone();
+                let needle = needle.clone();
+                Box::new(move |entry| {
+                    if stop.load(Ordering::Relaxed) || hits.load(Ordering::Relaxed) >= 50_000 {
+                        stop.store(true, Ordering::Relaxed);
+                        return ignore::WalkState::Quit;
+                    }
+                    let Ok(e) = entry else { return ignore::WalkState::Continue };
+                    // Cheap name check first (the common case: no text search).
+                    let name = e.file_name().to_string_lossy();
+                    if !fsutil::glob_match(&glob, &name) {
+                        return ignore::WalkState::Continue;
+                    }
+                    if want_text {
+                        if !e.file_type().map(|t| t.is_file()).unwrap_or(false) {
+                            return ignore::WalkState::Continue;
+                        }
+                        let Ok(m) = e.metadata() else { return ignore::WalkState::Continue };
+                        if m.len() > 50 << 20 {
+                            return ignore::WalkState::Continue;
+                        }
+                        let Ok(bytes) = fs::read(e.path()) else { return ignore::WalkState::Continue };
+                        if !contains_ci(&bytes, &needle) {
+                            return ignore::WalkState::Continue;
+                        }
+                    }
+                    let n = hits.fetch_add(1, Ordering::Relaxed) + 1;
+                    let path = e.path().to_string_lossy().to_string();
+                    if tx.send(path).is_err() {
+                        return ignore::WalkState::Quit;
+                    }
+                    if n % 250 == 0 {
+                        job_p.progress(0, 0, "");
+                    }
+                    ignore::WalkState::Continue
+                })
+            });
+            // All walkers done: close the channel so the consumer exits.
+            drop(tx);
+        });
+
+        let total = hits.load(Ordering::Relaxed);
+        if total >= 50_000 {
+            job.line("... stopped at 50000 results - narrow the pattern");
         }
-        Ok(format!("{hits} found"))
+        Ok(format!("{total} found"))
     })
+}
+
+/// Case-insensitive substring search in raw bytes without lowercasing the whole
+/// haystack. ASCII fast path; falls back to UTF-8 lossy for non-ASCII needles.
+fn contains_ci(bytes: &[u8], needle_lower: &str) -> bool {
+    if needle_lower.is_empty() {
+        return true;
+    }
+    if needle_lower.is_ascii() {
+        let n = needle_lower.as_bytes();
+        if bytes.len() < n.len() {
+            return false;
+        }
+        let first = n[0];
+        bytes.windows(n.len()).any(|w| {
+            w[0].eq_ignore_ascii_case(&first)
+                && w.iter().zip(n).all(|(a, b)| a.eq_ignore_ascii_case(b))
+        })
+    } else {
+        String::from_utf8_lossy(bytes).to_lowercase().contains(needle_lower)
+    }
 }
 
 // ------------------------------------------------------ preview / props ----

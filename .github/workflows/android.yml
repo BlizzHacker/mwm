@@ -50,14 +50,17 @@ jobs:
             echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
             echo "keyAlias=$ANDROID_KEY_ALIAS"
             echo "storeFile=$HOME/.android/mwm-release.p12"
+            echo "storeType=PKCS12"
           } > keystore.properties
           echo keystore.properties written
       - name: Init Android project + build
         working-directory: app/src-tauri
         run: |
           cargo tauri android init
-          # keystore.properties must live in the generated gradle project
+          # keystore.properties must live in the generated gradle project root
           cp ../../keystore.properties gen/android/keystore.properties
+          # Tauri's template ships unsigned: inject the release signingConfig
+          python3 ../../packaging/android/android-sign.py gen/android
           cargo tauri android build --apk --aab
       - name: Collect artifacts
         run: |
