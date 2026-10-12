@@ -454,18 +454,37 @@ function searchDialog(p) {
   const go = async () => {
     const id = await invoke("files_search", { root: $("#s-root").value, pattern: $("#s-name").value, text: $("#s-text").value });
     lastSearch = id;
+    searchFilter = "";
     watchJob(id, () => drawResults(), true);
     drawResults();
   };
   $("#s-go").onclick = go;
   $$("#s-name, #s-text").forEach((i) => (i.onkeydown = (e) => e.key === "Enter" && go()));
 }
+let searchFilter = "";
+const SEARCH_RENDER_MAX = 3000;
 function drawResults() {
   const box = $("#s-res");
   const j = JOBS.list.find((x) => x.id === lastSearch);
   if (!box || !j) return;
-  box.innerHTML = `<div class="spread muted" style="margin-bottom:6px"><span>${j.state === "running" ? '<span class="spin sm"></span> searching ' + esc(j.current) : esc(j.message)}</span><span>${j.output.length} found</span></div>
-    <div class="scroll mono" style="max-height:40vh">${j.output.slice(0, 1500).map((f) => `<div class="hit" data-hit="${esc(f)}">${esc(f)}</div>`).join("")}</div>`;
+  const hits = j.output || [];
+  const total = hits.length;
+  const q = searchFilter.toLowerCase().trim();
+  const shown = q ? hits.filter((f) => f.toLowerCase().includes(q)) : hits;
+  const truncated = shown.length > SEARCH_RENDER_MAX;
+  const running = j.state === "running";
+  box.innerHTML = `
+    <div class="spread muted" style="margin-bottom:6px">
+      <span>${running ? '<span class="spin sm"></span> searching ' + esc(j.current) : esc(j.message || total + " found")}</span>
+      <span>${num(total)} found${q ? ` · ${num(shown.length)} match filter` : ""}</span>
+    </div>
+    ${total > 40 || q ? `<input class="search" id="s-filter" style="width:100%;margin-bottom:6px" placeholder="Filter these results by path..." value="${esc(searchFilter)}">` : ""}
+    <div class="scroll mono" style="max-height:40vh">${shown.slice(0, SEARCH_RENDER_MAX).map((f) => `<div class="hit" data-hit="${esc(f)}">${esc(f)}</div>`).join("") || (running ? "" : '<div class="muted">No matches.</div>')}</div>
+    ${truncated ? `<div class="muted" style="margin-top:6px">Showing first ${num(SEARCH_RENDER_MAX)} of ${num(shown.length)} — use the filter box to narrow.</div>` : ""}`;
+  const filt = $("#s-filter");
+  if (filt) {
+    filt.oninput = () => { const pos = filt.selectionStart; searchFilter = filt.value; drawResults(); const el = $("#s-filter"); if (el) { el.focus(); el.setSelectionRange(pos, pos); } };
+  }
   $$("[data-hit]").forEach((h) => (h.onclick = () => {
     const f = h.dataset.hit;
     const cut = Math.max(f.lastIndexOf("\\"), f.lastIndexOf("/"));

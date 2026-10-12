@@ -79,7 +79,11 @@ impl Job {
         let s = s.into();
         self.with(|j| {
             j.output.push(s);
-            if j.output.len() > 4000 {
+            // Log-tail jobs (repairs, scans) keep a sliding window so the
+            // activity panel shows the recent tail. Search jobs must keep every
+            // hit or the user cannot reach early results - the search walker
+            // already caps total hits, so there is no unbounded growth here.
+            if j.kind != "search" && j.output.len() > 4000 {
                 j.output.drain(0..1000);
             }
         });
