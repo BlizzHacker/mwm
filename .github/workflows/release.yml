@@ -95,12 +95,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Build desktop executable
-        working-directory: app/src-tauri
         run: cargo build --release -p mwm-app
       - name: Scan with Defender (Store gate)
         shell: pwsh
         run: |
-          $exe = 'app/src-tauri/target/release/MoveWeightManager.exe'
+          $exe = 'target/release/MoveWeightManager.exe'
           if (-not (Test-Path $exe)) { throw 'Desktop executable was not produced' }
           # The dedicated windows-defender workflow is the hard gate; here a
           # scanner service error on the runner must not block the Store job.
@@ -118,7 +117,7 @@ jobs:
           $meta = cargo metadata --no-deps --format-version 1 | ConvertFrom-Json
           $version = ($meta.packages | Where-Object { $_.name -eq 'mwm-app' }).version
           if (-not $version) { throw 'could not read mwm-app version' }
-          ./packaging/msix/build-msix.ps1 -Exe app/src-tauri/target/release/MoveWeightManager.exe -Version $version
+          ./packaging/msix/build-msix.ps1 -Exe target/release/MoveWeightManager.exe -Version $version
       - uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:

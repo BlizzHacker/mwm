@@ -5,6 +5,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lib]
+name = "mwm_app"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
 [[bin]]
 name = "MoveWeightManager"
 path = "src/main.rs"
@@ -16,10 +20,12 @@ tauri-build = { version = "2", features = [] }
 mwm-core = { path = "../../crates/mwm-core" }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
-tauri-plugin-single-instance = "2"
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
+
+[target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
+tauri-plugin-single-instance = "2"
 
 [features]
 default = ["custom-protocol"]
