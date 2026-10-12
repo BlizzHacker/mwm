@@ -459,7 +459,7 @@ function searchDialog(p) {
     drawResults();
   };
   $("#s-go").onclick = go;
-  $$("#s-name, #s-text").forEach((i) => (i.onkeydown = (e) => e.key === "Enter" && go()));
+  $$("#s-name, #s-text").forEach((i) => (i.onkeydown = (e) => { if (e.key === "Enter") go(); }));
 }
 let searchFilter = "";
 const SEARCH_RENDER_MAX = 3000;
