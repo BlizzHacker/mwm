@@ -61,7 +61,7 @@ and mobile have feature parity by construction — there is no second codebase t
 | **Health Check** | Junk, startup, outdated apps and disk at a glance; one click cleans only the safe defaults. |
 | **Custom Clean** | 40+ rules: temp, recycle bin, thumbnails, crash dumps, WER, Update cache, Store apps, NVIDIA/Discord/VS Code/Steam caches, dev caches, every Chromium browser + Firefox. Linux: apt/dnf cache, journals, rotated logs, /tmp, Proxmox task logs. |
 | **Uninstaller** | Runs the real uninstaller (UAC-aware), then hunts leftover folders/shortcuts/registry keys → Recycle Bin; registry exported to `.reg` first. Store apps, dpkg/flatpak/snap on Linux. |
-| **Commander** | Dual-pane keyboard-first file manager: F3 view (text/image/hex), F5 copy, F6 move, F7 mkdir, F8 recycle, Alt+F7 search, multi-rename, zip pack/unpack, folder sizes, compare panes, full right-click menus. Background jobs with progress/cancel/conflict handling. |
+| **Commander** | Dual-pane keyboard-first file manager: F3 view (text/image/hex), F5 copy, F6 move, F7 mkdir, F8 recycle, Alt+F7 search (ripgrep-grade parallel walk — one thread per core, includes hidden/ignored files, streams results live), multi-rename, zip pack/unpack, folder sizes, compare panes, full right-click menus. Background jobs with progress/cancel/conflict handling. |
 | **File Explorer takeover** | One toggle makes double-clicking any Windows folder or drive open **MWM Commander** instead of Explorer (HKCU only, no admin, fully reversible). Second launches forward the folder to the running instance. |
 | **Vault** | Open/edit/save KeePassXC-compatible KDBX3/4 in desktop *and* browser: groups, history, attachments, key files, TOTP, generator, search, encrypted backups, browser-CSV import (Google/Brave/Edge), machine-key import. Master password never leaves the UI process; agents store encrypted KDBX bytes only. |
 | **Also** | Startup Manager (Task Manager-compatible toggles), Software Updater (winget/apt/brew), Duplicate Finder (BLAKE3), Disk Analyzer, Performance, Drivers inventory, Shredder + free-space wipe, System Report (exportable HTML), Security center, Network doctor, Crashes & Events, System Tools launcher. |
@@ -214,7 +214,7 @@ and publishes every artifact + SHA-256 sums to the release. Self-updaters on you
 1. **Windows** — desktop app, installer, MSIX. *Shipping; Store certification pending.*
 2. **Linux / Proxmox / Unraid** — static CLI + browser UI + cluster dashboards. *Shipping.* Next: TrueNAS SCALE app.
 3. **MWM Rescue** — WinPE + Linux rescue ISOs with the full tool catalog. *Shipping.*
-4. **Android** — APK/AAB building in CI. *Shipping.* Next: storage insight / duplicate cleanup inside Android's rules.
+4. **Android** — signed APK/AAB (APK Signature Scheme v2, 4 ABIs: arm64/armv7/x86/x86_64) built by CI; scoped-storage roots make Commander, Duplicate Finder and Disk Analyzer work on the phone. *Shipping.* Next: Play Store listing.
 5. **iOS / iPadOS** — storage insight and duplicate cleanup (Apple allows nothing more).
 6. **macOS** — engine complete; needs signed/notarized builds.
 
