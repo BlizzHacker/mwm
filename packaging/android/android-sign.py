@@ -18,7 +18,7 @@ if "signingConfigs" in s:
     sys.exit(0)
 
 keystore_props_loader = '''val keystorePropertiesFile = rootProject.file("keystore.properties")
-val keystoreProperties = java.util.Properties()
+val keystoreProperties = Properties()
 if (keystorePropertiesFile.exists()) {
     keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
 }

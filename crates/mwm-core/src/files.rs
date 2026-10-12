@@ -129,10 +129,34 @@ pub fn roots() -> Vec<Root> {
             v.push(Root { path: root, label: l, kind: kind.into(), total, free });
         }
     }
-    #[cfg(not(windows))]
+    #[cfg(all(not(windows), not(target_os = "android")))]
     {
         for d in crate::sys::disks() {
             v.push(Root { path: d.mount.clone(), label: d.name.clone(), kind: if d.removable { "removable".into() } else { "fixed".into() }, total: d.total, free: d.free });
+        }
+    }
+    #[cfg(target_os = "android")]
+    {
+        // Scoped storage: the app's external files dir and shared media dirs.
+        // sys::disks() reads /proc/mounts which is restricted on Android, so
+        // enumerate the well-known external-storage roots directly.
+        let ext = std::env::var("EXTERNAL_STORAGE").unwrap_or_else(|_| "/storage/emulated/0".into());
+        let ext = std::path::PathBuf::from(ext);
+        // Free/total via statvfs on the external volume.
+        let (total, free) = fsutil::volume_space(&ext);
+        v.push(Root { path: ext.to_string_lossy().into(), label: "Internal storage".into(), kind: "fixed".into(), total, free });
+        for sub in ["Download", "Documents", "DCIM", "Pictures", "Music", "Movies"] {
+            let d = ext.join(sub);
+            if d.is_dir() {
+                v.push(Root { path: d.to_string_lossy().into(), label: sub.into(), kind: "place".into(), total: 0, free: 0 });
+            }
+        }
+        // App-private external dir (always writable).
+        if let Ok(dirs) = std::env::var("ANDROID_APP_EXTERNAL_FILES") {
+            let d = std::path::PathBuf::from(dirs);
+            if d.is_dir() {
+                v.push(Root { path: d.to_string_lossy().into(), label: "MWM data".into(), kind: "place".into(), total: 0, free: 0 });
+            }
         }
     }
     let h = util::home();

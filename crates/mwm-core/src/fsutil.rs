@@ -214,6 +214,24 @@ pub fn modified_secs(m: &Metadata) -> u64 {
         .unwrap_or(0)
 }
 
+/// Free/total bytes of the volume holding `path`. Best-effort: (0,0) on failure.
+#[cfg(unix)]
+pub fn volume_space(path: &std::path::Path) -> (u64, u64) {
+    use std::os::unix::ffi::OsStrExt;
+    let Ok(c) = std::ffi::CString::new(path.as_os_str().as_bytes()) else { return (0, 0) };
+    let mut st: libc::statvfs = unsafe { std::mem::zeroed() };
+    if unsafe { libc::statvfs(c.as_ptr(), &mut st) } != 0 {
+        return (0, 0);
+    }
+    let bs = st.f_frsize as u64;
+    (bs * st.f_blocks as u64, bs * st.f_bavail as u64)
+}
+
+#[cfg(not(unix))]
+pub fn volume_space(_path: &std::path::Path) -> (u64, u64) {
+    (0, 0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
