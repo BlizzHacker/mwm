@@ -101,8 +101,17 @@ jobs:
         shell: pwsh
         run: |
           $exe = 'app/src-tauri/target/release/MoveWeightManager.exe'
-          Start-MpScan -ScanType CustomScan -ScanPath $exe
-          if (-not (Test-Path $exe)) { throw 'Defender quarantined the build' }
+          if (-not (Test-Path $exe)) { throw 'Desktop executable was not produced' }
+          # The dedicated windows-defender workflow is the hard gate; here a
+          # scanner service error on the runner must not block the Store job.
+          try {
+            Start-MpScan -ScanType CustomScan -ScanPath $exe -ErrorAction Stop
+            if (-not (Test-Path $exe)) { throw 'Defender quarantined the build' }
+            Write-Output 'Defender scan passed'
+          } catch {
+            Write-Output "Defender scan unavailable on this runner: $_"
+            if (-not (Test-Path $exe)) { throw 'Defender quarantined the build' }
+          }
       - name: Build MSIX
         shell: pwsh
         run: |

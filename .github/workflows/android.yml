@@ -24,9 +24,13 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
-      - name: Install NDK
-        run: sdkmanager --install "ndk;27.0.12077973" >/dev/null
+      - name: Accept SDK licenses and install NDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager --install "ndk;27.0.12077973"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
       - run: cargo install tauri-cli --version "^2" --locked
       - name: Restore signing keystore
         env:
