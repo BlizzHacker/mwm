@@ -5,6 +5,7 @@
 //! each module, so the UI never has to care where it is running.
 
 pub mod api;
+pub mod appliances;
 pub mod arkana;
 pub mod apps;
 pub mod cleaner;

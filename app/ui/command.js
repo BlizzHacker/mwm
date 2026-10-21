@@ -65,7 +65,7 @@ function drawCommand() {
   $("#page").innerHTML = `<div class="cc-hero card">
     <div><div class="label">MWM v5 · your infrastructure</div><h2>Command Center</h2><p>One place for the machines, LXCs, apps and domains behind your products.</p>
     <div class="row" style="gap:8px;flex-wrap:wrap"><span class="pill low">${esc(d.inventory?.cluster?.name || CENTER.pve?.cluster?.name || "Proxmox fleet")}</span><span class="muted">${esc(fresh)}</span></div></div>
-    <div class="cc-hero-actions"><button class="btn primary" data-go="cluster">Open Proxmox</button><button class="btn" data-go="plugins">ARR & apps</button><button class="btn" data-go="fleet">Manage connections</button></div>
+    <div class="cc-hero-actions"><button class="btn" data-go="appliances">Network & Media</button><button class="btn primary" data-go="cluster">Open Proxmox</button><button class="btn" data-go="plugins">ARR & apps</button><button class="btn" data-go="fleet">Manage connections</button></div>
   </div>
   <div class="grid g4 cc-metrics">
     <div class="card"><div class="label">Nodes</div><div class="big">${d.nodes.length}</div><div class="muted">${d.nodes.filter((n) => n.status === "online").length} online</div></div>

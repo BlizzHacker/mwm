@@ -153,6 +153,7 @@ const PAGES = [
   { sec: "Overview" },
   { id: "health", label: "Health Check", icon: "health" },
   { id: "command", label: "Command Center", icon: "server" },
+  { id: "appliances", label: "Network & Media", icon: "net" },
   { id: "fleet", label: "Machines", icon: "server" },
   { sec: "Clean" },
   { id: "offload", label: "Move Weight", icon: "weight" },

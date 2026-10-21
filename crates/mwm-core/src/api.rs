@@ -25,7 +25,7 @@ fn e<T: serde::Serialize>(r: anyhow::Result<T>) -> Result<Value, String> {
 pub fn is_mutating(cmd: &str) -> bool {
     matches!(
         cmd,
-        "cleaner_clean" | "app_uninstall" | "leftovers_remove" | "startup_set" | "service_mode" | "update_apply" | "dupes_remove"
+        "appliance_action" | "media_app_scan" | "media_app_update" | "cleaner_clean" | "app_uninstall" | "leftovers_remove" | "startup_set" | "service_mode" | "update_apply" | "dupes_remove"
             | "shred_paths" | "wipe_free" | "procs_kill" | "files_mkdir" | "files_rename" | "files_transfer" | "files_delete"
             | "files_pack" | "files_unpack" | "files_multi_rename" | "files_write" | "toolkit_run" | "server_action"
             | "conn_save" | "conn_remove" | "guest_docker_action" | "deploy_node" | "pve_op" | "pve_create_lxc"
@@ -136,6 +136,11 @@ pub fn call(cmd: &str, a: &Value) -> Result<Value, String> {
         "arkana_analyze" => e(crate::arkana::analyze(&arg::<String>(a, "path")?)),
         "plugins_list" => e(crate::plugins::list()),
         "app_latest_release" => e(crate::release::latest()),
+        "appliance_status" => e(crate::appliances::status()),
+        "appliance_action" => e(crate::appliances::action(&arg::<String>(a, "action")?, &arg::<Option<String>>(a, "service")?.unwrap_or_default())),
+        "media_app_report" => e(crate::appliances::media_report()),
+        "media_app_scan" => e(crate::appliances::media_job("scan", "")),
+        "media_app_update" => e(crate::appliances::media_job("update", &arg::<String>(a, "vmid")?)),
         "fleet_inventory" => e(crate::fleet_inventory::read()),
         "arr_mcp_status" => ok(crate::mcp_arr::status()),
         "arr_mcp_configure" => e(crate::mcp_arr::configure(&arg::<String>(a, "url")?)),
