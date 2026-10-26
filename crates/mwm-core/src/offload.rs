@@ -24,6 +24,7 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Stdio};
 use std::sync::{Mutex, OnceLock};
+use std::time::UNIX_EPOCH;
 
 use anyhow::{anyhow, bail, Context};
 use flate2::write::GzEncoder;
@@ -224,8 +225,11 @@ fn count_lines(s: Option<String>) -> u64 {
     s.map(|t| t.lines().filter(|l| !l.trim().is_empty()).count() as u64).unwrap_or(0)
 }
 
+/// True when any component of `rel` is a rebuildable folder name. tar's
+/// `--exclude` matches every path component, so such paths never reach an
+/// archive and must not be listed or counted as if they would.
 fn is_rebuildable(rel: &str) -> bool {
-    rel.trim_end_matches('/').rsplit(['/', '\\']).next().map(|n| REBUILDABLE.contains(&n)).unwrap_or(false)
+    rel.split(['/', '\\']).any(|n| REBUILDABLE.contains(&n))
 }
 
 /// Size of a path (file or folder), never following links.
@@ -267,7 +271,12 @@ fn idle_days(p: &Path) -> u64 {
 fn worktree_parent(p: &Path) -> Option<PathBuf> {
     let t = fs::read_to_string(p.join(".git")).ok()?;
     let gitdir = t.trim().strip_prefix("gitdir:")?.trim();
-    let gd = PathBuf::from(gitdir);
+    let gd = p.join(gitdir);
+    // A worktree whose admin folder was pruned is no longer one: every git
+    // command in it fails ("gitfile does not point to a valid repository").
+    if !gd.is_dir() {
+        return None;
+    }
     // <repo>/.git/worktrees/<name>
     let dotgit = gd.parent()?.parent()?;
     let repo = dotgit.parent()?;
@@ -276,11 +285,21 @@ fn worktree_parent(p: &Path) -> Option<PathBuf> {
 
 /// Untracked (not ignored) files and the ignored entries worth keeping.
 fn keep_lists(dir: &Path) -> (Vec<String>, Vec<String>, u64) {
-    let untracked: Vec<String> = git(dir, &["ls-files", "-z", "--others", "--exclude-standard"])
-        .map(|s| s.split('\0').filter(|x| !x.is_empty()).map(String::from).collect())
-        .unwrap_or_default();
+    let mut untracked = Vec::new();
     let mut ignored_keep = Vec::new();
     let mut dropped = 0u64;
+    // Untracked files inside a rebuildable folder (.pytest_cache/README.md,
+    // node_modules.x/pkg/coverage/...) are dropped like the folder itself.
+    for f in git(dir, &["ls-files", "-z", "--others", "--exclude-standard"])
+        .map(|s| s.split('\0').filter(|x| !x.is_empty()).map(String::from).collect::<Vec<_>>())
+        .unwrap_or_default()
+    {
+        if is_rebuildable(&f) {
+            dropped += fs::symlink_metadata(dir.join(&f)).map(|m| m.len()).unwrap_or(0);
+        } else {
+            untracked.push(f);
+        }
+    }
     for entry in git(dir, &["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory"])
         .map(|s| s.split('\0').filter(|x| !x.is_empty()).map(String::from).collect::<Vec<_>>())
         .unwrap_or_default()
@@ -649,10 +668,10 @@ fn ship_stream(server: &str, dest: &str, file: &str, mut producer: Child, job: &
     let pst = producer.wait_with_output()?;
     let sst = sink.wait_with_output()?;
     if !pst.status.success() {
-        bail!("{file}: {}", String::from_utf8_lossy(&pst.stderr).lines().last().unwrap_or("local packing failed"));
+        bail!("{file}: {}", tool_error(&pst.stderr, "local packing failed"));
     }
     if !sst.status.success() {
-        bail!("{file}: {}", String::from_utf8_lossy(&sst.stderr).trim());
+        bail!("{file}: {}", tool_error(&sst.stderr, "the server stopped receiving"));
     }
     let sha = format!("{:x}", hasher.finalize());
     let remote_sha = remote(server, &format!("sha256sum {} | cut -d' ' -f1", q(&format!("{target}.part"))))?;
@@ -720,19 +739,108 @@ fn tar_args(extra: &[&str]) -> Vec<String> {
     a
 }
 
-/// Files a tar of `dir` holding `entries` (relative) will contain, minus rebuildables.
-fn count_entries(dir: &Path, entries: &[String], exclude_rebuildable: bool) -> u64 {
+/// What went wrong, from a tool's stderr. tar ends every failure with "Error
+/// exit delayed from previous errors", which hides the line that matters.
+fn tool_error(stderr: &[u8], fallback: &str) -> String {
+    let t = String::from_utf8_lossy(stderr);
+    let lines: Vec<&str> = t.lines().map(str::trim).filter(|l| !l.is_empty() && !l.contains("Error exit delayed")).collect();
+    match lines.len() {
+        0 => fallback.to_string(),
+        1..=3 => lines.join("; "),
+        n => format!("{} (+{} more)", lines[..3].join("; "), n - 3),
+    }
+}
+
+/// The files a tar of `entries` (relative to `dir`) will hold, and a
+/// fingerprint of them: every path, size and modification time. Rebuildable
+/// paths are left out the way tar's `--exclude` leaves them out (any path
+/// component), so the count matches what arrives on the server.
+fn manifest(dir: &Path, entries: &[String], exclude_rebuildable: bool) -> (u64, String) {
     let mut n = 0;
+    let mut h = Sha256::new();
     for e in entries {
-        for w in WalkDir::new(dir.join(e)).follow_links(false).into_iter().filter_entry(|x| {
-            !(exclude_rebuildable && x.depth() > 0 && x.file_type().is_dir() && REBUILDABLE.contains(&x.file_name().to_string_lossy().as_ref()))
-        }).flatten() {
-            if !w.file_type().is_dir() {
-                n += 1;
+        let walk = WalkDir::new(dir.join(e)).follow_links(false).sort_by_file_name().into_iter().filter_entry(|x| {
+            !(exclude_rebuildable && x.file_type().is_dir() && REBUILDABLE.contains(&x.file_name().to_string_lossy().as_ref()))
+        });
+        for w in walk.flatten() {
+            if w.file_type().is_dir() {
+                continue;
             }
+            let rel = w.path().strip_prefix(dir).unwrap_or(w.path()).to_string_lossy().replace('\\', "/");
+            if exclude_rebuildable && is_rebuildable(&rel) {
+                continue;
+            }
+            let m = w.metadata().ok();
+            let len = m.as_ref().map(|m| m.len()).unwrap_or(0);
+            let t = m.and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_nanos()).unwrap_or(0);
+            h.update(format!("{rel}\0{len}\0{t}\n").as_bytes());
+            n += 1;
         }
     }
-    n
+    (n, format!("{:x}", h.finalize()))
+}
+
+/// Split off the entries tar cannot read: links (symlinks, junctions) whose
+/// target is gone, such as a junction into a drive that is no longer there.
+/// tar fails the whole archive on one ("Cannot stat"), so they are left out and
+/// listed in RESTORE.md as `path -> target` instead.
+fn split_dangling(dir: &Path, list: Vec<String>) -> (Vec<String>, Vec<String>) {
+    let mut keep = Vec::new();
+    let mut gone = Vec::new();
+    for e in list {
+        let p = dir.join(&e);
+        if fs::symlink_metadata(&p).is_ok() && fs::metadata(&p).is_err() {
+            let target = fs::read_link(&p).map(|t| t.to_string_lossy().to_string()).unwrap_or_else(|_| "?".into());
+            gone.push(format!("{e} -> {target}"));
+        } else {
+            keep.push(e);
+        }
+    }
+    (keep, gone)
+}
+
+/// SHA-256 of strings, each ended by a NUL so their boundaries count.
+fn digest(parts: &[&str]) -> String {
+    let mut h = Sha256::new();
+    for x in parts {
+        h.update(x.as_bytes());
+        h.update([0u8]);
+    }
+    format!("{:x}", h.finalize())
+}
+
+/// SHA-256 and length of what a command prints, read through without keeping it.
+fn digest_output(program: &str, args: &[String], dir: &Path) -> anyhow::Result<(String, u64)> {
+    let mut child = producer(program, args, dir, None)?;
+    let mut out = child.stdout.take().ok_or_else(|| anyhow!("no {program} output"))?;
+    let mut h = Sha256::new();
+    let mut n = 0u64;
+    let mut buf = vec![0u8; 1 << 20];
+    loop {
+        let k = out.read(&mut buf)?;
+        if k == 0 {
+            break;
+        }
+        h.update(&buf[..k]);
+        n += k as u64;
+    }
+    let st = child.wait_with_output()?;
+    if !st.status.success() {
+        bail!("{program}: {}", tool_error(&st.stderr, "failed"));
+    }
+    Ok((format!("{:x}", h.finalize()), n))
+}
+
+/// What a history bundle of `args` is made from: the refs it starts at and the
+/// remote refs it stops at. Same refs, same bundle.
+fn refs_fingerprint(path: &Path, kind: &str, args: &[String]) -> String {
+    let mut fe = vec!["for-each-ref", "--format=%(objectname) %(refname)", "refs/remotes"];
+    if kind != "worktree" {
+        fe.extend(["refs/heads", "refs/tags", "refs/stash"]);
+    }
+    let refs = git(path, &fe).unwrap_or_default();
+    let head = git(path, &["rev-parse", "HEAD"]).unwrap_or_default();
+    digest(&[&args.join(" "), &refs, &head])
 }
 
 fn remote_tar_count(server: &str, path: &str) -> anyhow::Result<u64> {
@@ -748,6 +856,8 @@ struct Shipped {
     shipped: u64,
     artifacts: Vec<String>,
     restore: String,
+    /// Nothing changed since the last verified shipment, so nothing travelled.
+    unchanged: bool,
 }
 
 fn safe_name(s: &str) -> String {
@@ -758,32 +868,156 @@ fn host() -> String {
     std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).unwrap_or_else(|_| "this-pc".into())
 }
 
+// ------------------------------------------------------------------ change detection
+
+/// One file of a verified shipment, with the fingerprint of the local state it
+/// was made from. `at` is where it lives on the server: in this shipment's
+/// folder, or in an earlier one when nothing changed. Empty when the part came
+/// out empty (git refuses an empty bundle) and nothing was stored.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Part {
+    pub file: String,
+    pub fp: String,
+    pub at: String,
+    pub sha: String,
+    pub bytes: u64,
+    pub files: u64,
+}
+
+/// The last verified shipment of a folder. The guard retries a folder every day
+/// until it is gone from this drive, so what the server already holds is
+/// pointed at instead of shipped again.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Sent {
+    pub path: String,
+    pub server: String,
+    pub dest: String,
+    pub when: u64,
+    pub parts: Vec<Part>,
+    pub restore: String,
+}
+
+fn sent_path() -> PathBuf {
+    data_dir().join("offload-sent.json")
+}
+
+fn sent_all() -> Vec<Sent> {
+    fs::read_to_string(sent_path()).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+}
+
+fn last_sent(server: &str, path: &str) -> Option<Sent> {
+    let key = norm_path(path);
+    sent_all().into_iter().find(|s| s.server == server && norm_path(&s.path) == key)
+}
+
+fn sent_record(s: &Sent) {
+    let key = norm_path(&s.path);
+    let mut all: Vec<Sent> = sent_all().into_iter().filter(|x| !(x.server == s.server && norm_path(&x.path) == key)).collect();
+    all.push(s.clone());
+    let _ = fs::write(sent_path(), serde_json::to_vec_pretty(&all).unwrap_or_default());
+}
+
+/// The earlier copy of `file` that stands in for a new one: same fingerprint.
+fn reusable<'a>(prev: Option<&'a Sent>, file: &str, fp: &str) -> Option<&'a Part> {
+    prev?.parts.iter().find(|x| x.file == file && x.fp == fp)
+}
+
+/// True when the folder is exactly as it was at the last shipment: the same
+/// parts, each with the same fingerprint.
+fn unchanged(prev: &Sent, wanted: &[(String, String)]) -> bool {
+    prev.parts.len() == wanted.len() && wanted.iter().all(|(f, fp)| reusable(Some(prev), f, fp).is_some())
+}
+
+/// `prev` without the parts whose file is no longer on the server at its size
+/// (cleaned up by hand, say), so those are shipped again.
+fn still_there(server: &str, mut prev: Sent) -> anyhow::Result<Sent> {
+    let paths: Vec<String> = prev.parts.iter().filter(|x| !x.at.is_empty()).map(|x| q(&x.at)).collect();
+    if paths.is_empty() {
+        return Ok(prev);
+    }
+    let out = remote(server, &format!("stat -c '%s %n' {} 2>/dev/null; true", paths.join(" ")))?;
+    let sizes = parse_sizes(&out);
+    prev.parts.retain(|x| x.at.is_empty() || sizes.iter().any(|(n, f)| *f == x.at && *n == x.bytes));
+    Ok(prev)
+}
+
+/// `stat -c '%s %n'` output as (size, path).
+fn parse_sizes(out: &str) -> Vec<(u64, &str)> {
+    out.lines()
+        .filter_map(|l| {
+            let (n, f) = l.split_once(' ')?;
+            Some((n.parse().ok()?, f))
+        })
+        .collect()
+}
+
+fn artifact_line(x: &Part, dest: &str) -> String {
+    let files = if x.files > 0 { format!(" ({} files)", x.files) } else { String::new() };
+    if x.at == format!("{dest}/{}", x.file) {
+        format!("{} {}{files}", x.file, x.sha)
+    } else {
+        format!("{} {}{files} - unchanged, kept at {}", x.file, x.sha, x.at)
+    }
+}
+
+/// A fresh folder for this shipment, `<root>/<host>/<yyyymmdd>-<name>`, with
+/// the time added when today's already exists: a second run the same day never
+/// writes into the first one's folder.
+fn new_dest(p: &Policy, it: &Item) -> anyhow::Result<String> {
+    let now = now_secs();
+    let base = format!("{}/{}/{}-{}", p.remote_root.trim_end_matches('/'), safe_name(&host().to_lowercase()), ymd(now), safe_name(&it.name));
+    let alt = format!("{base}-{}", hms(now));
+    let out = remote(&p.server, &format!("d={}; [ -e \"$d\" ] && d={}; mkdir -p \"$(dirname \"$d\")\" && mkdir \"$d\" && printf %s \"$d\"", q(&base), q(&alt)))?;
+    Ok(out.trim().to_string())
+}
+
+fn bundle_args(it: &Item) -> Vec<String> {
+    let mut args: Vec<String> = vec!["-C".into(), it.path.clone(), "bundle".into(), "create".into(), "-".into()];
+    if it.kind == "worktree" {
+        args.push("HEAD".into());
+    } else if it.kind == "bare" {
+        args.extend(["--branches".into(), "--tags".into()]);
+    } else {
+        args.extend(["--branches".into(), "--tags".into(), "HEAD".into()]);
+        if it.stashes > 0 {
+            args.push("refs/stash".into());
+        }
+    }
+    if !it.remotes.is_empty() {
+        args.extend(["--not".into(), "--remotes".into()]);
+    }
+    args
+}
+
+/// Ship one folder. Every part is measured here first (a fingerprint of what it
+/// would hold); a folder that is exactly as it was at its last verified
+/// shipment ships nothing, and an unchanged part of a changed folder is pointed
+/// at (PARTS.json, RESTORE.md) instead of sent again. A shipment that fails is
+/// removed from the server, so no `.part` files or half folders pile up.
 fn ship_item(p: &Policy, it: &Item, job: &Job) -> anyhow::Result<Shipped> {
     let path = PathBuf::from(&it.path);
-    let dest = format!("{}/{}/{}-{}", p.remote_root.trim_end_matches('/'), safe_name(&host().to_lowercase()), ymd(now_secs()), safe_name(&it.name));
-    remote(&p.server, &format!("mkdir -p {}", q(&dest)))?;
-    let mut artifacts = Vec::new();
-    let mut shipped = 0u64;
-    let mut restore = format!("# {}\n\nShipped by MWM from `{}` on {} ({}).\n\n", it.name, it.path, host(), ymd(now_secs()));
     let parent_dir = path.parent().unwrap_or(Path::new(".")).to_path_buf();
 
-    if it.kind == "rebuildable" {
-        restore.push_str("A rebuildable dependency / build folder. Nothing was shipped: reinstall or rebuild to get it back.\n");
-    } else if it.kind == "folder" {
-        job.current(&format!("{}: packing the folder", it.name));
-        let prod = producer(&tar_bin(), &tar_args(&["--no-rebuild-excludes", "-C", &parent_dir.to_string_lossy(), &it.name]), &parent_dir, None)?;
-        let (n, sha) = ship_stream(&p.server, &dest, "folder.tar.gz", prod, job, true)?;
-        let local = count_entries(&parent_dir, std::slice::from_ref(&it.name), false);
-        let there = remote_tar_count(&p.server, &format!("{dest}/folder.tar.gz"))?;
-        if there != local {
-            bail!("{}: {} files packed, {} arrived", it.name, local, there);
-        }
-        shipped += n;
-        artifacts.push(format!("folder.tar.gz {sha} ({local} files)"));
-        restore.push_str(&format!("Restore on the server:\n\n    tar -xzf {dest}/folder.tar.gz -C /where/you/want\n"));
-    } else {
+    job.current(&format!("{}: checking what changed", it.name));
+    let mut wanted: Vec<(String, String)> = Vec::new();
+    let mut folder_files = 0u64;
+    let folder_args = tar_args(&["--no-rebuild-excludes", "-C", &parent_dir.to_string_lossy(), &it.name]);
+    let mut meta = Value::Null;
+    let mut meta_bytes = Vec::new();
+    let mut bargs: Vec<String> = Vec::new();
+    let mut list: Vec<String> = Vec::new();
+    let mut dangling: Vec<String> = Vec::new();
+    let mut list_files = 0u64;
+    let untracked_args = tar_args(&["--null", "-T", "-"]);
+    if it.kind == "folder" {
+        let (n, fp) = manifest(&parent_dir, std::slice::from_ref(&it.name), false);
+        folder_files = n;
+        wanted.push(("folder.tar.gz".into(), digest(&[&folder_args.join(" "), &fp])));
+    } else if it.kind != "rebuildable" {
         // Remotes, branches and HEAD, so the tree can be re-cloned exactly.
-        let meta = json!({
+        meta = json!({
             "remotes": git(&path, &["remote", "-v"]).unwrap_or_default(),
             "branches": git(&path, &["for-each-ref", "--format=%(refname:short) %(objectname) %(upstream:short)", "refs/heads"]).unwrap_or_default(),
             "head": git(&path, &["rev-parse", "HEAD"]).unwrap_or_default().trim(),
@@ -791,91 +1025,184 @@ fn ship_item(p: &Policy, it: &Item, job: &Job) -> anyhow::Result<Shipped> {
             "shallow": git(&path, &["rev-parse", "--is-shallow-repository"]).unwrap_or_default().trim() == "true",
             "kind": it.kind, "parent": it.parent, "path": it.path,
         });
-        let meta_bytes = serde_json::to_vec_pretty(&meta)?;
-        let (n, sha) = ship_bytes(&p.server, &dest, "git-state.json", meta_bytes, job)?;
-        shipped += n;
-        artifacts.push(format!("git-state.json {sha}"));
-
+        meta_bytes = serde_json::to_vec_pretty(&meta)?;
+        wanted.push(("git-state.json".into(), format!("{:x}", Sha256::digest(&meta_bytes))));
         // Every commit and stash no remote has.
         if it.unpushed > 0 || it.stashes > 0 || it.remotes.is_empty() {
-            job.current(&format!("{}: bundling unpushed history", it.name));
-            let mut args: Vec<String> = vec!["-C".into(), it.path.clone(), "bundle".into(), "create".into(), "-".into()];
-            if it.kind == "worktree" {
-                args.push("HEAD".into());
-            } else if it.kind == "bare" {
-                args.extend(["--branches".into(), "--tags".into()]);
-            } else {
-                args.extend(["--branches".into(), "--tags".into(), "HEAD".into()]);
-                if it.stashes > 0 {
-                    args.push("refs/stash".into());
-                }
-            }
-            if !it.remotes.is_empty() {
-                args.extend(["--not".into(), "--remotes".into()]);
-            }
-            let prod = producer("git", &args, &path, None)?;
-            match ship_stream(&p.server, &dest, "unpushed.bundle", prod, job, false) {
-                Ok((n, sha)) => {
-                    let heads = remote(&p.server, &format!("git bundle list-heads {} | wc -l", q(&format!("{dest}/unpushed.bundle"))))?;
-                    if heads.trim().parse::<u64>().unwrap_or(0) == 0 {
-                        bail!("{}: the history bundle arrived empty", it.name);
-                    }
-                    shipped += n;
-                    artifacts.push(format!("unpushed.bundle {sha}"));
-                }
-                // git refuses an empty bundle: every commit is already on a remote.
-                Err(e) if e.to_string().contains("empty bundle") => {
-                    let _ = remote(&p.server, &format!("rm -f {}", q(&format!("{dest}/unpushed.bundle.part"))));
-                }
-                Err(e) => return Err(e),
-            }
+            bargs = bundle_args(it);
+            wanted.push(("unpushed.bundle".into(), refs_fingerprint(&path, &it.kind, &bargs)));
         }
-
         // Uncommitted changes to tracked files.
         if it.dirty > 0 {
-            job.current(&format!("{}: saving uncommitted changes", it.name));
-            let prod = producer("git", &["-C".into(), it.path.clone(), "diff".into(), "HEAD".into(), "--binary".into()], &path, None)?;
-            let (n, sha) = ship_stream(&p.server, &dest, "uncommitted.patch", prod, job, false)?;
+            let (fp, n) = digest_output("git", &patch_args(it), &path)?;
             if n > 0 {
-                shipped += n;
-                artifacts.push(format!("uncommitted.patch {sha}"));
+                wanted.push(("uncommitted.patch".into(), fp));
             }
         }
-
         // Untracked files, and ignored files that are not rebuildable.
-        let (untracked, ignored_keep, _) = if it.kind == "bare" { (vec![], vec![], 0) } else { keep_lists(&path) };
-        let mut list: Vec<String> = untracked;
-        list.extend(ignored_keep);
-        if !list.is_empty() {
-            job.current(&format!("{}: packing untracked and ignored-but-unique files", it.name));
-            let mut data = Vec::new();
-            for f in &list {
-                data.extend_from_slice(f.trim_end_matches('/').as_bytes());
-                data.push(0);
+        if it.kind != "bare" {
+            let (untracked, ignored_keep, _) = keep_lists(&path);
+            let all: Vec<String> = untracked.into_iter().chain(ignored_keep).map(|x| x.trim_end_matches('/').to_string()).collect();
+            (list, dangling) = split_dangling(&path, all);
+            if !list.is_empty() {
+                let (n, fp) = manifest(&path, &list, true);
+                list_files = n;
+                wanted.push(("untracked.tar.gz".into(), digest(&[&untracked_args.join(" "), &fp])));
             }
-            let prod = producer(&tar_bin(), &tar_args(&["--null", "-T", "-"]), &path, Some(data))?;
-            let (n, sha) = ship_stream(&p.server, &dest, "untracked.tar.gz", prod, job, true)?;
-            let local = count_entries(&path, &list.iter().map(|x| x.trim_end_matches('/').to_string()).collect::<Vec<_>>(), true);
-            let there = remote_tar_count(&p.server, &format!("{dest}/untracked.tar.gz"))?;
-            if there != local {
-                bail!("{}: {} untracked files packed, {} arrived", it.name, local, there);
-            }
-            shipped += n;
-            artifacts.push(format!("untracked.tar.gz {sha} ({local} files)"));
         }
-
-        let url = git(&path, &["remote", "get-url", "origin"]).unwrap_or_default().trim().to_string();
-        let branch = meta.get("headRef").and_then(|x| x.as_str()).unwrap_or_default().to_string();
-        restore.push_str(&format!(
-            "Restore on the server:\n\n    git clone {url} {name} && cd {name}\n    git fetch {dest}/unpushed.bundle 'refs/*:refs/restored/*'   # if unpushed.bundle exists\n    git checkout {head}   # branch {branch}\n    git apply --binary {dest}/uncommitted.patch             # if it exists\n    tar -xzf {dest}/untracked.tar.gz                      # if it exists\n\nAll remotes, branches and upstreams are in git-state.json.\n",
-            url = if url.is_empty() { "<remote>".into() } else { url },
-            name = it.name,
-            head = meta.get("head").and_then(|x| x.as_str()).unwrap_or_default(),
-        ));
     }
 
-    let (_, _) = ship_bytes(&p.server, &dest, "RESTORE.md", restore.clone().into_bytes(), job)?;
-    Ok(Shipped { dest, shipped, artifacts, restore })
+    let prev = match last_sent(&p.server, &it.path) {
+        Some(s) => Some(still_there(&p.server, s)?),
+        None => None,
+    };
+    if let Some(prev) = prev.as_ref().filter(|s| unchanged(s, &wanted)) {
+        return Ok(Shipped {
+            dest: prev.dest.clone(),
+            shipped: 0,
+            artifacts: prev.parts.iter().filter(|x| !x.at.is_empty()).map(|x| artifact_line(x, &prev.dest)).collect(),
+            restore: prev.restore.clone(),
+            unchanged: true,
+        });
+    }
+
+    let dest = new_dest(p, it)?;
+    let mut parts: Vec<Part> = Vec::new();
+    let mut shipped = 0u64;
+    let fp_of = |file: &str| wanted.iter().find(|(f, _)| f == file).map(|(_, fp)| fp.clone()).unwrap_or_default();
+    let prev = prev.as_ref();
+    let sent: anyhow::Result<String> = (|| {
+        let here = |file: &str| format!("{dest}/{file}");
+        // Reuse the earlier copy when the fingerprint matches; else run `ship`.
+        type Ship<'s> = &'s mut dyn FnMut() -> anyhow::Result<Option<(u64, String)>>;
+        let part = |parts: &mut Vec<Part>, shipped: &mut u64, file: &str, files: u64, ship: Ship| -> anyhow::Result<()> {
+            let fp = fp_of(file);
+            if let Some(old) = reusable(prev, file, &fp) {
+                parts.push(old.clone());
+                return Ok(());
+            }
+            let (at, bytes, sha) = match ship()? {
+                Some((n, sha)) => (here(file), n, sha),
+                None => (String::new(), 0, String::new()),
+            };
+            *shipped += bytes;
+            parts.push(Part { file: file.into(), fp, at, sha, bytes, files });
+            Ok(())
+        };
+        let mut restore = format!("# {}\n\nShipped by MWM from `{}` on {} ({}).\n\n", it.name, it.path, host(), ymd(now_secs()));
+
+        if it.kind == "rebuildable" {
+            restore.push_str("A rebuildable dependency / build folder. Nothing was shipped: reinstall or rebuild to get it back.\n");
+        } else if it.kind == "folder" {
+            part(&mut parts, &mut shipped, "folder.tar.gz", folder_files, &mut || {
+                job.current(&format!("{}: packing the folder", it.name));
+                let prod = producer(&tar_bin(), &folder_args, &parent_dir, None)?;
+                let (n, sha) = ship_stream(&p.server, &dest, "folder.tar.gz", prod, job, true)?;
+                let there = remote_tar_count(&p.server, &here("folder.tar.gz"))?;
+                if there != folder_files {
+                    bail!("{}: {} files packed, {} arrived", it.name, folder_files, there);
+                }
+                Ok(Some((n, sha)))
+            })?;
+            restore.push_str(&format!("Restore on the server:\n\n    tar -xzf {} -C /where/you/want\n", at(&parts, "folder.tar.gz", &dest)));
+        } else {
+            let (n, sha) = ship_bytes(&p.server, &dest, "git-state.json", meta_bytes.clone(), job)?;
+            shipped += n;
+            parts.push(Part { file: "git-state.json".into(), fp: fp_of("git-state.json"), at: here("git-state.json"), sha, bytes: n, files: 0 });
+
+            if !bargs.is_empty() {
+                part(&mut parts, &mut shipped, "unpushed.bundle", 0, &mut || {
+                    job.current(&format!("{}: bundling unpushed history", it.name));
+                    let prod = producer("git", &bargs, &path, None)?;
+                    match ship_stream(&p.server, &dest, "unpushed.bundle", prod, job, false) {
+                        Ok((n, sha)) => {
+                            let heads = remote(&p.server, &format!("git bundle list-heads {} | wc -l", q(&here("unpushed.bundle"))))?;
+                            if heads.trim().parse::<u64>().unwrap_or(0) == 0 {
+                                bail!("{}: the history bundle arrived empty", it.name);
+                            }
+                            Ok(Some((n, sha)))
+                        }
+                        // git refuses an empty bundle: every commit is already on a remote.
+                        Err(e) if e.to_string().contains("empty bundle") => {
+                            let _ = remote(&p.server, &format!("rm -f {}", q(&format!("{}.part", here("unpushed.bundle")))));
+                            Ok(None)
+                        }
+                        Err(e) => Err(e),
+                    }
+                })?;
+            }
+
+            if wanted.iter().any(|(f, _)| f == "uncommitted.patch") {
+                part(&mut parts, &mut shipped, "uncommitted.patch", 0, &mut || {
+                    job.current(&format!("{}: saving uncommitted changes", it.name));
+                    let prod = producer("git", &patch_args(it), &path, None)?;
+                    ship_stream(&p.server, &dest, "uncommitted.patch", prod, job, false).map(Some)
+                })?;
+            }
+
+            if !list.is_empty() {
+                part(&mut parts, &mut shipped, "untracked.tar.gz", list_files, &mut || {
+                    job.current(&format!("{}: packing untracked and ignored-but-unique files", it.name));
+                    let mut data = Vec::new();
+                    for f in &list {
+                        data.extend_from_slice(f.as_bytes());
+                        data.push(0);
+                    }
+                    let prod = producer(&tar_bin(), &untracked_args, &path, Some(data))?;
+                    let (n, sha) = ship_stream(&p.server, &dest, "untracked.tar.gz", prod, job, true)?;
+                    let there = remote_tar_count(&p.server, &here("untracked.tar.gz"))?;
+                    if there != list_files {
+                        bail!("{}: {} untracked files packed, {} arrived", it.name, list_files, there);
+                    }
+                    Ok(Some((n, sha)))
+                })?;
+            }
+
+            let url = git(&path, &["remote", "get-url", "origin"]).unwrap_or_default().trim().to_string();
+            let branch = meta.get("headRef").and_then(|x| x.as_str()).unwrap_or_default().to_string();
+            restore.push_str(&format!(
+                "Restore on the server:\n\n    git clone {url} {name} && cd {name}\n    git fetch {bundle} 'refs/*:refs/restored/*'   # if unpushed.bundle exists\n    git checkout {head}   # branch {branch}\n    git apply --binary {patch}             # if it exists\n    tar -xzf {untracked}                      # if it exists\n\nAll remotes, branches and upstreams are in {dest}/git-state.json.\n",
+                url = if url.is_empty() { "<remote>".into() } else { url },
+                name = it.name,
+                head = meta.get("head").and_then(|x| x.as_str()).unwrap_or_default(),
+                bundle = at(&parts, "unpushed.bundle", &dest),
+                patch = at(&parts, "uncommitted.patch", &dest),
+                untracked = at(&parts, "untracked.tar.gz", &dest),
+            ));
+        }
+        if !dangling.is_empty() {
+            restore.push_str("\nLinks whose target was already gone were not shipped (path -> target):\n\n");
+            for d in &dangling {
+                restore.push_str(&format!("    {d}\n"));
+            }
+        }
+        if parts.iter().any(|x| !x.at.is_empty() && x.at != here(&x.file)) {
+            restore.push_str("\nParts that had not changed since an earlier shipment were not sent again: the paths above point at them, and PARTS.json lists where every part is.\n");
+        }
+        ship_bytes(&p.server, &dest, "PARTS.json", serde_json::to_vec_pretty(&parts)?, job)?;
+        ship_bytes(&p.server, &dest, "RESTORE.md", restore.clone().into_bytes(), job)?;
+        Ok(restore)
+    })();
+    let restore = match sent {
+        Ok(r) => r,
+        Err(e) => {
+            let cleaned = remote(&p.server, &format!("rm -rf -- {}", q(&dest))).is_ok();
+            bail!("{e:#}{}", if cleaned { " (the partial shipment was removed from the server)" } else { "" });
+        }
+    };
+    sent_record(&Sent { path: it.path.clone(), server: p.server.clone(), dest: dest.clone(), when: now_secs(), parts: parts.clone(), restore: restore.clone() });
+    let artifacts = parts.iter().filter(|x| !x.at.is_empty()).map(|x| artifact_line(x, &dest)).collect();
+    Ok(Shipped { dest, shipped, artifacts, restore, unchanged: false })
+}
+
+/// Where `file` of this shipment is on the server: its own folder, or the
+/// earlier shipment an unchanged part was left in.
+fn at(parts: &[Part], file: &str, dest: &str) -> String {
+    parts.iter().find(|x| x.file == file && !x.at.is_empty()).map(|x| x.at.clone()).unwrap_or_else(|| format!("{dest}/{file}"))
+}
+
+fn patch_args(it: &Item) -> Vec<String> {
+    vec!["-C".into(), it.path.clone(), "diff".into(), "HEAD".into(), "--binary".into()]
 }
 
 /// Write a small in-memory file to `<dest>/<file>` on the server and verify it.
@@ -965,14 +1292,20 @@ pub fn run_items(p: &Policy, mut items: Vec<Item>, job: &Job) -> anyhow::Result<
             job.progress(0, 1, "");
             continue;
         }
-        match ship_item(p, &fresh, job).and_then(|s| {
-            drop_local(&fresh)?;
-            Ok(s)
+        // A shipment whose local delete fails stays recorded as sent, so the
+        // next run finds it unchanged and only retries the delete.
+        match ship_item(p, &fresh, job).and_then(|s| match drop_local(&fresh) {
+            Ok(()) => Ok(s),
+            Err(e) => Err(anyhow!("shipped to {} but deleting it here failed ({e:#}); the next run only retries the delete", s.dest)),
         }) {
             Ok(s) => {
                 ok += 1;
                 freed += fresh.bytes;
-                job.line(format!("{}: moved ({} here, {} shipped) -> {}", fresh.name, human(fresh.bytes), human(s.shipped), s.dest));
+                if s.unchanged {
+                    job.line(format!("{}: moved ({} here, nothing shipped - unchanged since {})", fresh.name, human(fresh.bytes), s.dest));
+                } else {
+                    job.line(format!("{}: moved ({} here, {} shipped) -> {}", fresh.name, human(fresh.bytes), human(s.shipped), s.dest));
+                }
                 ledger_add(&Moved {
                     name: fresh.name.clone(),
                     path: fresh.path.clone(),
@@ -987,7 +1320,7 @@ pub fn run_items(p: &Policy, mut items: Vec<Item>, job: &Job) -> anyhow::Result<
                 });
             }
             Err(e) => {
-                let m = format!("{}: kept - {e}", fresh.name);
+                let m = format!("{}: kept - {e:#}", fresh.name);
                 job.line(m.clone());
                 failed.push(m);
             }
@@ -1157,6 +1490,12 @@ fn ymd(secs: u64) -> String {
     format!("{y:04}{m:02}{d:02}")
 }
 
+/// hhmmss (UTC) from Unix seconds.
+fn hms(secs: u64) -> String {
+    let s = secs % 86_400;
+    format!("{:02}{:02}{:02}", s / 3600, (s / 60) % 60, s % 60)
+}
+
 fn ymd_hms(secs: u64) -> String {
     let (y, m, d) = civil(secs / 86_400);
     let s = secs % 86_400;
@@ -1199,5 +1538,211 @@ mod tests {
     fn quoting() {
         assert_eq!(q("a b"), "'a b'");
         assert_eq!(q("it's"), "'it'\\''s'");
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("mwm-offload-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    fn put(root: &Path, rel: &str, body: &str) {
+        let p = root.join(rel);
+        fs::create_dir_all(p.parent().unwrap()).unwrap();
+        fs::write(p, body).unwrap();
+    }
+
+    #[test]
+    fn rebuildable_anywhere_in_the_path() {
+        // tar's --exclude drops these too; counting them made the 2026-10 guard
+        // fail every day ("52185 untracked files packed, 52175 arrived").
+        assert!(is_rebuildable(".pytest_cache/README.md"));
+        assert!(is_rebuildable("arcforge-studio/backend/.pytest_cache/v/cache/nodeids"));
+        assert!(is_rebuildable("node_modules.partial/stream-buffers/coverage/lcov.info"));
+        assert!(!is_rebuildable("node_modules.partial/stream-buffers/lib/index.js"));
+        assert!(!is_rebuildable("tmp/qa-loop/distance.txt"));
+    }
+
+    #[test]
+    fn manifest_counts_what_tar_keeps() {
+        let d = scratch("manifest");
+        put(&d, "a/keep.txt", "1");
+        put(&d, "a/coverage/lcov.info", "2");
+        put(&d, "a/deep/node_modules/x.js", "3");
+        put(&d, "a/dist", "a file named like a build folder");
+        put(&d, ".pytest_cache/README.md", "4");
+        put(&d, "b.txt", "5");
+        let entries = vec!["a".to_string(), "b.txt".to_string(), ".pytest_cache/README.md".to_string()];
+        assert_eq!(manifest(&d, &entries, true).0, 2);
+        assert_eq!(manifest(&d, &entries, false).0, 6);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn manifest_fingerprint_follows_content() {
+        let d = scratch("fp");
+        put(&d, "a/one.txt", "1");
+        put(&d, "a/two.txt", "2");
+        let entries = vec!["a".to_string()];
+        let first = manifest(&d, &entries, true).1;
+        assert_eq!(first, manifest(&d, &entries, true).1, "same files, same fingerprint");
+        put(&d, "a/two.txt", "two");
+        assert_ne!(first, manifest(&d, &entries, true).1, "a changed file changes it");
+        let second = manifest(&d, &entries, true).1;
+        put(&d, "a/three.txt", "3");
+        assert_ne!(second, manifest(&d, &entries, true).1, "a new file changes it");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dangling_links_are_split_off() {
+        let d = scratch("dangling");
+        put(&d, "real/file.txt", "x");
+        std::os::unix::fs::symlink(d.join("real"), d.join("good")).unwrap();
+        std::os::unix::fs::symlink("/nonexistent/mwm-spill", d.join("gone")).unwrap();
+        let (keep, gone) = split_dangling(&d, vec!["real".into(), "good".into(), "gone".into()]);
+        assert_eq!(keep, vec!["real".to_string(), "good".to_string()]);
+        assert_eq!(gone, vec!["gone -> /nonexistent/mwm-spill".to_string()]);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn pruned_worktree_is_not_a_worktree() {
+        let d = scratch("wt");
+        fs::create_dir_all(d.join("repo/.git/worktrees/live")).unwrap();
+        fs::create_dir_all(d.join("live")).unwrap();
+        fs::create_dir_all(d.join("pruned")).unwrap();
+        fs::write(d.join("live/.git"), format!("gitdir: {}\n", d.join("repo/.git/worktrees/live").display())).unwrap();
+        fs::write(d.join("pruned/.git"), format!("gitdir: {}\n", d.join("repo/.git/worktrees/pruned").display())).unwrap();
+        assert_eq!(worktree_parent(&d.join("live")), Some(d.join("repo")));
+        assert_eq!(worktree_parent(&d.join("pruned")), None);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    fn part(file: &str, fp: &str, at: &str) -> Part {
+        Part { file: file.into(), fp: fp.into(), at: at.into(), sha: "s".into(), bytes: 10, files: 0 }
+    }
+
+    fn sent(parts: Vec<Part>) -> Sent {
+        Sent { path: r"C:\MoveWeight\ui".into(), server: "root@h".into(), dest: "/r/h/20261025-ui".into(), parts, ..Default::default() }
+    }
+
+    fn w(x: &[(&str, &str)]) -> Vec<(String, String)> {
+        x.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect()
+    }
+
+    #[test]
+    fn unchanged_folder_ships_nothing() {
+        let prev = sent(vec![
+            part("git-state.json", "g1", "/r/h/20261025-ui/git-state.json"),
+            part("unpushed.bundle", "b1", "/r/h/20261025-ui/unpushed.bundle"),
+            part("untracked.tar.gz", "u1", "/r/h/20261025-ui/untracked.tar.gz"),
+        ]);
+        assert!(unchanged(&prev, &w(&[("git-state.json", "g1"), ("unpushed.bundle", "b1"), ("untracked.tar.gz", "u1")])));
+        // One part changed: not unchanged, but the others are reusable.
+        let changed = w(&[("git-state.json", "g1"), ("unpushed.bundle", "b1"), ("untracked.tar.gz", "u2")]);
+        assert!(!unchanged(&prev, &changed));
+        assert!(reusable(Some(&prev), "unpushed.bundle", "b1").is_some());
+        assert!(reusable(Some(&prev), "untracked.tar.gz", "u2").is_none());
+        // A new part (fresh uncommitted changes) or a part gone: changed.
+        assert!(!unchanged(&prev, &w(&[("git-state.json", "g1"), ("unpushed.bundle", "b1"), ("uncommitted.patch", "p1"), ("untracked.tar.gz", "u1")])));
+        assert!(!unchanged(&prev, &w(&[("git-state.json", "g1"), ("untracked.tar.gz", "u1")])));
+        assert!(reusable(None, "git-state.json", "g1").is_none());
+    }
+
+    #[test]
+    fn empty_bundle_counts_as_known() {
+        // git refused an empty bundle last time: same refs, still nothing to ship.
+        let prev = sent(vec![part("git-state.json", "g1", "/r/h/20261025-ui/git-state.json"), part("unpushed.bundle", "b1", "")]);
+        assert!(unchanged(&prev, &w(&[("git-state.json", "g1"), ("unpushed.bundle", "b1")])));
+    }
+
+    #[test]
+    fn sizes_from_stat() {
+        let out = "3358119452 /r/h/20261025-ui/unpushed.bundle\n12 /r/h/with space/git-state.json\nstat: junk\n";
+        assert_eq!(parse_sizes(out), vec![(3358119452, "/r/h/20261025-ui/unpushed.bundle"), (12, "/r/h/with space/git-state.json")]);
+    }
+
+    #[test]
+    fn artifact_lines_say_where_parts_are() {
+        let here = part("unpushed.bundle", "b", "/r/h/20261026-ui/unpushed.bundle");
+        let kept = Part { files: 7, ..part("untracked.tar.gz", "u", "/r/h/20261025-ui/untracked.tar.gz") };
+        assert_eq!(artifact_line(&here, "/r/h/20261026-ui"), "unpushed.bundle s");
+        assert_eq!(artifact_line(&kept, "/r/h/20261026-ui"), "untracked.tar.gz s (7 files) - unchanged, kept at /r/h/20261025-ui/untracked.tar.gz");
+        assert_eq!(at(&[kept.clone()], "untracked.tar.gz", "/r/h/20261026-ui"), "/r/h/20261025-ui/untracked.tar.gz");
+        assert_eq!(at(&[kept], "uncommitted.patch", "/r/h/20261026-ui"), "/r/h/20261026-ui/uncommitted.patch");
+    }
+
+    /// Ships a scratch repo to a real server over SSH: first in full, then
+    /// unchanged (nothing travels), then with one part changed (only that part
+    /// travels, the rest is pointed at), then after a part vanished from the
+    /// server (it travels again). The server must be this machine, since the
+    /// test reads the shipment back from disk:
+    /// `MWM_TEST_SERVER=root@127.0.0.1 cargo test -p mwm-core offload -- --ignored`
+    #[cfg(unix)]
+    #[test]
+    #[ignore]
+    fn ships_once_then_points_at_what_is_there() {
+        let Ok(server) = std::env::var("MWM_TEST_SERVER") else { return };
+        let d = scratch("e2e");
+        std::env::set_var("XDG_DATA_HOME", d.join("data"));
+        let repo = d.join("work/proj");
+        put(&repo, "tracked.txt", "v1");
+        let g = |args: &[&str]| assert!(cmd("git").arg("-C").arg(&repo).args(args).status().unwrap().success());
+        g(&["init", "-q"]);
+        g(&["add", "."]);
+        g(&["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "one"]);
+        put(&repo, "tracked.txt", "v2");
+        put(&repo, "notes/todo.md", "keep me");
+        put(&repo, ".pytest_cache/README.md", "rebuildable");
+        std::os::unix::fs::symlink("/nonexistent/mwm-spill", repo.join("spill")).unwrap();
+        let p = Policy { server, remote_root: d.join("server").to_string_lossy().into(), ..Default::default() };
+        let ship = || {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let (p, it) = (p.clone(), inspect(&p, &repo));
+            jobs::start("move", "test", "offload", move |job| {
+                let _ = tx.send(ship_item(&p, &it, job).map(|s| (s.dest, s.unchanged, s.shipped)).map_err(|e| format!("{e:#}")));
+                Ok(String::new())
+            });
+            rx.recv().unwrap().unwrap()
+        };
+        let files = |dest: &str| {
+            let mut v: Vec<String> = fs::read_dir(dest).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect();
+            v.sort();
+            v
+        };
+
+        let (d1, same, n) = ship();
+        assert!(!same && n > 0);
+        assert_eq!(files(&d1), ["PARTS.json", "RESTORE.md", "git-state.json", "uncommitted.patch", "unpushed.bundle", "untracked.tar.gz"]);
+        assert!(fs::read_to_string(format!("{d1}/RESTORE.md")).unwrap().contains("spill -> /nonexistent/mwm-spill"));
+
+        let (d2, same, n) = ship();
+        assert_eq!((d2.as_str(), same, n), (d1.as_str(), true, 0), "an unchanged folder ships nothing");
+
+        put(&repo, "notes/todo.md", "keep me, changed");
+        let (d3, same, _) = ship();
+        assert!(!same && d3 != d1);
+        assert_eq!(files(&d3), ["PARTS.json", "RESTORE.md", "git-state.json", "untracked.tar.gz"]);
+        let restore = fs::read_to_string(format!("{d3}/RESTORE.md")).unwrap();
+        assert!(restore.contains(&format!("{d1}/unpushed.bundle")) && restore.contains(&format!("{d1}/uncommitted.patch")));
+
+        fs::remove_file(format!("{d1}/unpushed.bundle")).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        let (d4, same, _) = ship();
+        assert!(!same && d4 != d3);
+        assert_eq!(files(&d4), ["PARTS.json", "RESTORE.md", "git-state.json", "unpushed.bundle"]);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn tar_errors_name_the_real_cause() {
+        let e = b"tar.exe: public/cr-realms: Cannot stat: No such file or directory\r\ntar.exe: Error exit delayed from previous errors\r\n";
+        assert_eq!(tool_error(e, "x"), "tar.exe: public/cr-realms: Cannot stat: No such file or directory");
+        assert_eq!(tool_error(b"tar.exe: Error exit delayed from previous errors\n", "local packing failed"), "local packing failed");
+        assert_eq!(tool_error(b"a\nb\nc\nd\ne\n", "x"), "a; b; c (+2 more)");
+        assert_eq!(hms(3_600 * 9 + 60 * 5 + 7), "090507");
     }
 }
