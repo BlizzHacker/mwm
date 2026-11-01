@@ -30,7 +30,9 @@ function dFact(label, value) {
   return '<div class="device-fact"><b>' + esc(label) + '</b><span>' + esc(value || "Unavailable") + '</span></div>';
 }
 function dLoad(srv, cores) {
-  const a = String(srv?.load || "").trim().split(/\s+/).slice(0, 3).map(Number).filter(Number.isFinite);
+  const raw = String(srv?.load || "").trim();
+  if (!raw) return ["Unavailable", "Load average is not reported on this OS"];
+  const a = raw.split(/\s+/).slice(0, 3).map(Number).filter(Number.isFinite);
   if (!a.length) return ["Unavailable", "Load average not reported"];
   const per = cores ? " · " + (a[0] / cores).toFixed(2) + "/core" : "";
   return ["1m " + a[0].toFixed(2) + per, "5m " + (a[1] ?? a[0]).toFixed(2) + " · 15m " + (a[2] ?? a[0]).toFixed(2)];
@@ -63,7 +65,7 @@ function dHostCard(m) {
   const gpuLoad = gpus.map((g) => dNum(g.utilization_pct)).filter((x) => x !== null);
   const gpuTemp = gpus.map((g) => dNum(g.temp_c)).filter((x) => x !== null);
   const load = dLoad(s, cores);
-  const drives = Array.isArray(s.drives) && s.drives.length ? s.drives : Array.isArray(s.smart) && s.smart.length ? s.smart : Array.isArray(s.unraid?.disks) ? s.unraid.disks : [];
+  const drives = (Array.isArray(s.drives) && s.drives.length ? s.drives : Array.isArray(s.smart) && s.smart.length ? s.smart : Array.isArray(s.unraid?.disks) ? s.unraid.disks : []).filter((x) => !String(x.device || x.name || "").startsWith("/dev/bus/"));
   const volumes = dVolumes(i, s);
   const issues = [];
   if (arr(s.failed).length) issues.push(arr(s.failed).length + " failed services");
@@ -83,7 +85,7 @@ function dHostCard(m) {
   const cpuSub = coreText + (n ? " · Proxmox node" : " · sampled by MWM");
   const ramValue = ramPct === null ? "Unavailable" : Math.round(ramPct) + "%";
   const ramSub = ramTotal ? dBytes(ramUsed) + " / " + dBytes(ramTotal) : "Memory totals unavailable";
-  const vramValue = gpus.length ? (vramTotal ? dBytes(vramUsed) + " / " + dBytes(vramTotal) : "GPU found") : "No GPU reported";
+  const vramValue = gpus.length ? (vramTotal ? dBytes(vramUsed) + " / " + dBytes(vramTotal) : "VRAM unavailable") : "No GPU reported";
   const vramSub = gpus.length ? gpus.map((g) => g.name || "GPU").join(", ") + (gpuLoad.length ? " · " + Math.round(gpuLoad.reduce((a,b)=>a+b,0)/gpuLoad.length) + "% GPU" : "") + (gpuTemp.length ? " · " + Math.round(gpuTemp.reduce((a,b)=>a+b,0)/gpuTemp.length) + "°C" : "") : "Telemetry missing or no GPU";
   const diskValue = disk ? dBytes(disk.free) + " free" : "Unavailable";
   const diskSub = disk ? dBytes(disk.used) + " used / " + dBytes(disk.total) + " · " + (diskPct === null ? "usage n/a" : Math.round(diskPct) + "% used") : "No disk totals reported";
@@ -243,7 +245,7 @@ function drawDeviceTopology() {
     const count = dNum(m.pveNode?.maxcpu) || dNum(m.info?.cores) || 0;
     const pct = m.pveNode ? (dNum(m.pveNode.cpu) === null ? null : dNum(m.pveNode.cpu) * 100) : dNum(m.srv?.cpu_usage_pct);
     if (pct !== null && count > 0) { cpuWeighted += pct * count; cpuWeight += count; }
-    for (const g of dGpuRows(m.srv)) { gpuCount++; totalVram += dNum(g.vram_total_bytes) || 0; }
+    for (const g of dGpuRows(m.srv)) { const vram = dNum(g.vram_total_bytes); if (vram !== null && vram > 0) gpuCount++; totalVram += vram || 0; }
   }
   const cpuSummary = cpuWeight ? Math.round(cpuWeighted / cpuWeight) + "% avg" : "Unavailable";
   const netLive = network.filter((d) => d.online === true).length;
