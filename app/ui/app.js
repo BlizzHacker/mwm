@@ -151,6 +151,7 @@ const S = {
 
 const PAGES = [
   { sec: "Overview" },
+  { id: "topology", label: "Devices", icon: "net" },
   { id: "health", label: "Health Check", icon: "health" },
   { id: "command", label: "Command Center", icon: "server" },
   { id: "appliances", label: "Network & Media", icon: "net" },
@@ -185,7 +186,7 @@ const PAGES = [
   { id: "tools", label: "System Tools", icon: "tools" },
   { id: "about", label: "About MWM", icon: "about" },
 ];
-let current = "health";
+let current = DEMO && location.pathname.startsWith("/demo") ? "appliances" : "topology";
 
 // Background activity per page (long jobs keep running across tab changes).
 // ACT = UI-side jobs; JOBS = engine jobs (copies, repairs) polled from Rust.

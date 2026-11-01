@@ -1,11 +1,15 @@
 /* Service plugins discovered across connected Proxmox hosts. */
 "use strict";
 
-const PLUG = { rows: [], error: "", mcp: null, mcpSource: "", mcpHost: "", hosts: 0 };
+const PLUG = { rows: [], error: "", mcp: null, mcpSource: "", mcpHost: "", pveMcp: null, pveMcpSource: "", pveMcpHost: "", hosts: 0 };
 
 const arrMcpInvoke = (cmd, args = {}) => PLUG.mcpSource === TARGET
   ? invoke(cmd, args)
   : localInvoke("remote_call", { id: PLUG.mcpSource, cmd, args });
+
+const pveMcpInvoke = (cmd, args = {}) => PLUG.pveMcpSource === TARGET
+  ? invoke(cmd, args)
+  : localInvoke("remote_call", { id: PLUG.pveMcpSource, cmd, args });
 
 VIEWS.plugins = async function () {
   $("#top-actions").innerHTML = '<button class="btn" id="plug-refresh">Refresh</button>';
@@ -13,13 +17,16 @@ VIEWS.plugins = async function () {
   $("#page").innerHTML = loading("Discovering services across connected Proxmox nodes...");
   const connections = arr(await localInvoke("conn_list").catch(() => []));
   const sources = [{ id: "", name: "This machine" }, ...connections];
-  const [results, bridges] = await Promise.all([
+  const [results, bridges, pveBridges] = await Promise.all([
     Promise.allSettled(sources.map((source) => source.id
       ? localInvoke("remote_call", { id: source.id, cmd: "plugins_list", args: {} })
       : localInvoke("plugins_list"))),
     Promise.allSettled(sources.map((source) => source.id
       ? localInvoke("remote_call", { id: source.id, cmd: "arr_mcp_status", args: {} })
       : localInvoke("arr_mcp_status"))),
+    Promise.allSettled(sources.map((source) => source.id
+      ? localInvoke("remote_call", { id: source.id, cmd: "pve_mcp_status", args: {} })
+      : localInvoke("pve_mcp_status"))),
   ]);
   const seen = new Set(), errors = [];
   PLUG.rows = [];
@@ -42,6 +49,11 @@ VIEWS.plugins = async function () {
   PLUG.mcpSource = sources[chosen].id;
   PLUG.mcpHost = sources[chosen].name;
   PLUG.mcp = bridges[chosen].status === "fulfilled" ? bridges[chosen].value : { configured: false, reachable: false, error: String(bridges[chosen].reason) };
+  const pveAvailable = pveBridges.findIndex((result) => result.status === "fulfilled" && result.value?.reachable);
+  const pveChosen = pveAvailable >= 0 ? pveAvailable : selected;
+  PLUG.pveMcpSource = sources[pveChosen].id;
+  PLUG.pveMcpHost = sources[pveChosen].name;
+  PLUG.pveMcp = pveBridges[pveChosen].status === "fulfilled" ? pveBridges[pveChosen].value : { configured: false, reachable: false, error: String(pveBridges[pveChosen].reason) };
   if (current === "plugins") drawPlugins();
 };
 
@@ -52,9 +64,11 @@ function drawPlugins() {
     ${rows.map((r, i) => `<tr class="click" tabindex="0" data-plugin="${i}"><td class="cell-main">${esc(r.label)}</td><td class="mono">${esc(r.vmid)} · ${esc(r.node)}</td><td>${statePill(r.state)}</td><td>${r.info?.auth_required ? '<span class="pill medium">login required</span>' : r.info?.reachable ? '<span class="pill low">reachable</span>' : `<span class="pill ${r.state === "stopped" ? "" : "medium"}">${r.state === "stopped" ? "off" : "unreachable"}</span>`}</td><td>${r.info?.health ?? "—"}</td><td>${r.info?.queue ?? "—"}</td><td class="mono muted">${esc(r.info?.version || "")}</td></tr>`).join("")}
     </tbody></table></div></div>` : `<div class="empty"><h3>No supported services found</h3>Connect the owning Proxmox nodes in Machines, then refresh.${PLUG.error ? `<p>${esc(PLUG.error)}</p>` : ""}</div>`}
     ${rows.some((r) => r.info?.error) ? `<div class="card" style="margin-top:14px"><h3>API details</h3>${rows.filter((r) => r.info?.error).map((r) => `<div><b>${esc(r.label)}</b>: <span class="muted">${esc(r.info.error)}</span></div>`).join("")}</div>` : ""}`;
-  $("#page").insertAdjacentHTML("beforeend", drawArrBridge());
+  $("#page").insertAdjacentHTML("beforeend", drawArrBridge() + drawPveMcpBridge());
   $("#arr-mcp-connect").onclick = connectArrBridge;
   $("#arr-mcp-tools").onclick = showArrTools;
+  $("#pve-mcp-connect").onclick = connectPveMcp;
+  $("#pve-mcp-tools").onclick = showPveMcpTools;
   $$("[data-plugin]").forEach((tr) => {
     tr.onclick = () => pluginDetails(PLUG.rows[+tr.dataset.plugin]);
     tr.onkeydown = (e) => { if (e.key === "Enter") pluginDetails(PLUG.rows[+tr.dataset.plugin]); };
@@ -97,6 +111,60 @@ function runArrTool(tool) {
     await guard(async () => {
       const result = await arrMcpInvoke("arr_mcp_call", { name: tool.name, args });
       modal(`<h2>${esc(tool.name)} result</h2><pre class="mono wrap" style="max-height:60vh;overflow:auto">${esc(JSON.stringify(result, null, 2))}</pre><button class="btn" data-close>Close</button>`);
+    });
+  };
+}
+
+
+function drawPveMcpBridge() {
+  const s = PLUG.pveMcp || {};
+  return '<div class="card" style="margin-top:14px"><div class="spread"><h3>Proxmox MCP</h3><a class="muted" href="https://github.com/ry-ops/proxmox-mcp-server" target="_blank" rel="noopener noreferrer">ry-ops server</a></div>' +
+    '<p class="muted">Browse upstream Proxmox API tools through the selected MWM host. Keep the MCP endpoint on that host loopback; MWM carries the authenticated remote connection.</p>' +
+    '<div class="row" style="gap:8px;flex-wrap:wrap"><span class="pill ' + (s.reachable ? "low" : "medium") + '">' + (s.reachable ? "connected · " + (s.read_only_count ?? 0) + " read-only tools" : s.configured ? "offline" : "not connected") + '</span><span class="muted">via ' + esc(PLUG.pveMcpHost) + '</span><span class="mono muted">' + esc(s.url || "127.0.0.1:8811/mcp") + '</span></div>' +
+    (s.error ? '<p class="muted">' + esc(s.error) + '</p>' : '') +
+    '<div class="row" style="margin-top:12px;gap:8px"><button class="btn" id="pve-mcp-connect">' + (s.configured ? "Change endpoint" : "Connect Proxmox MCP") + '</button><button class="btn" id="pve-mcp-tools" ' + (s.reachable ? "" : "disabled") + '>Browse tools (' + (s.tool_count || 0) + ')</button></div></div>';
+}
+
+async function connectPveMcp() {
+  const url = await ask("Connect Proxmox MCP", "Loopback Streamable HTTP endpoint on the selected MWM host", PLUG.pveMcp?.url || "http://127.0.0.1:8811/mcp", "Connect", "Start proxmox-mcp-server-http on that host, bound to 127.0.0.1. MWM rejects non-loopback addresses.");
+  if (!url) return;
+  await guard(async () => { await pveMcpInvoke("pve_mcp_configure", { url }); toast("Proxmox MCP connected."); await VIEWS.plugins(); });
+}
+
+async function showPveMcpTools() {
+  await guard(async () => {
+    const tools = arr(await pveMcpInvoke("pve_mcp_tools"));
+    const cards = tools.map((t, i) => '<button class="btn" style="display:block;width:100%;text-align:left;margin:4px 0" data-pve-mcp-tool="' + i + '"><b>' + esc(t.name) + '</b>' +
+      (t.annotations?.readOnlyHint ? ' <span class="pill low">read only</span>' : t.annotations?.destructiveHint ? ' <span class="pill high">destructive</span>' : ' <span class="pill medium">write</span>') +
+      '<br><span class="muted">' + esc(t.description || "") + '</span></button>').join("");
+    modal('<h2>Proxmox MCP tools</h2><p class="muted">' + tools.length + ' upstream tools on ' + esc(PLUG.pveMcpHost) + '. MWM routes reads and writes separately; writes require confirmation and remain limited by the upstream server role.</p><div class="scroll" style="max-height:58vh">' + cards + '</div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn" data-close>Close</button></div>');
+    $$("[data-pve-mcp-tool]").forEach((b) => b.onclick = () => runPveMcpTool(tools[+b.dataset.pveMcpTool]));
+  });
+}
+
+function runPveMcpTool(tool) {
+  const readOnly = tool.annotations?.readOnlyHint === true;
+  const destructive = tool.annotations?.destructiveHint === true;
+  modal('<h2>' + esc(tool.name) + '</h2><p class="muted">' + esc(tool.description || "") + '</p><details><summary>Arguments expected by this tool</summary><pre class="mono wrap" style="max-height:26vh;overflow:auto">' + esc(JSON.stringify(tool.inputSchema || {}, null, 2)) + '</pre></details><p class="muted">Arguments (JSON object)</p><textarea id="pve-mcp-args" class="search" style="width:100%;min-height:140px;font-family:monospace">{}</textarea><div class="row" style="justify-content:flex-end;margin-top:14px"><button class="btn" id="pve-mcp-cancel">Cancel</button><button class="btn ' + (readOnly ? "primary" : "danger") + '" id="pve-mcp-run">' + (readOnly ? "Run read-only tool" : "Review write") + '</button></div>');
+  $("#pve-mcp-cancel").onclick = closeModal;
+  $("#pve-mcp-run").onclick = async () => {
+    let args;
+    try {
+      args = JSON.parse($("#pve-mcp-args").value);
+      if (!args || Array.isArray(args) || typeof args !== "object") throw Error("Enter a JSON object");
+    } catch (e) { toast("Invalid arguments: " + e.message, true); return; }
+    if (!readOnly) {
+      const note = "<p>" + esc(tool.name) + " can change your cluster." +
+        (destructive ? " It may stop, delete, wipe, roll back, or run commands inside a guest." : "") +
+        " Review the arguments and upstream role before continuing.</p><pre class=\"mono wrap\" style=\"max-height:22vh;overflow:auto\">" + esc(JSON.stringify(args, null, 2)) + "</pre>";
+      const action = await choose(destructive ? "Run destructive Proxmox tool?" : "Run Proxmox write tool?", note, [["yes", "Run tool", destructive ? "danger" : "primary"]]);
+      if (!action) return;
+    }
+    closeModal();
+    await guard(async () => {
+      const cmd = readOnly ? "pve_mcp_call_read" : "pve_mcp_call_write";
+      const result = await pveMcpInvoke(cmd, { name: tool.name, args });
+      modal('<h2>' + esc(tool.name) + ' result</h2><pre class="mono wrap" style="max-height:60vh;overflow:auto">' + esc(JSON.stringify(result, null, 2)) + '</pre><button class="btn" data-close>Close</button>');
     });
   };
 }

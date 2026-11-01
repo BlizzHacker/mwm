@@ -31,7 +31,7 @@ pub fn is_mutating(cmd: &str) -> bool {
             | "conn_save" | "conn_remove" | "guest_docker_action" | "deploy_node" | "pve_op" | "pve_create_lxc"
             | "lab_quarantine" | "lab_quarantine_restore" | "lab_quarantine_delete"
             | "arkana_configure" | "arkana_connect_lxc" | "arkana_install" | "arkana_control" | "arkana_tool" | "arkana_analyze"
-            | "arr_mcp_configure" | "arr_mcp_call"
+            | "arr_mcp_configure" | "arr_mcp_call" | "pve_mcp_configure" | "pve_mcp_call_write"
             | "hestia_action" | "hestia_dns_add" | "hestia_dns_delete"
             | "rescue_fetch" | "integrity_baseline" | "integrity_verify"
             | "explorer_takeover_set"
@@ -137,6 +137,18 @@ pub fn call(cmd: &str, a: &Value) -> Result<Value, String> {
         "plugins_list" => e(crate::plugins::list()),
         "app_latest_release" => e(crate::release::latest()),
         "appliance_status" => e(crate::appliances::status()),
+        "device_map" => {
+            let path = crate::util::data_dir().join("device-map.json");
+            let value = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).unwrap_or_else(|| json!({"devices": []}));
+            let rows = value.get("devices").and_then(Value::as_array).ok_or("device map must contain a devices array")?;
+            let allowed = ["id", "name", "kind", "icon", "role", "address", "state", "detail", "go", "action"];
+            let devices = rows.iter().map(|row| {
+                let mut clean = serde_json::Map::new();
+                for key in allowed { if let Some(value) = row.get(key) { clean.insert(key.into(), value.clone()); } }
+                Value::Object(clean)
+            }).collect::<Vec<_>>();
+            Ok(json!({"devices": devices}))
+        },
         "appliance_action" => e(crate::appliances::action(&arg::<String>(a, "action")?, &arg::<Option<String>>(a, "service")?.unwrap_or_default())),
         "media_app_report" => e(crate::appliances::media_report()),
         "media_app_scan" => e(crate::appliances::media_job("scan", "")),
@@ -146,6 +158,11 @@ pub fn call(cmd: &str, a: &Value) -> Result<Value, String> {
         "arr_mcp_configure" => e(crate::mcp_arr::configure(&arg::<String>(a, "url")?)),
         "arr_mcp_tools" => e(crate::mcp_arr::tools()),
         "arr_mcp_call" => e(crate::mcp_arr::call(&arg::<String>(a, "name")?, a.get("args").unwrap_or(&Value::Null))),
+        "pve_mcp_status" => ok(crate::mcp_proxmox::status()),
+        "pve_mcp_configure" => e(crate::mcp_proxmox::configure(&arg::<String>(a, "url")?)),
+        "pve_mcp_tools" => e(crate::mcp_proxmox::tools()),
+        "pve_mcp_call_read" => e(crate::mcp_proxmox::call(&arg::<String>(a, "name")?, a.get("args").unwrap_or(&Value::Null), false)),
+        "pve_mcp_call_write" => e(crate::mcp_proxmox::call(&arg::<String>(a, "name")?, a.get("args").unwrap_or(&Value::Null), true)),
         // HestiaCP hosting (via the hosting LXC)
         "hestia_users" => e(crate::hestia::users()),
         "hestia_domains" => e(crate::hestia::domains()),

@@ -24,6 +24,7 @@ const FILES: &[(&str, &str, &str)] = &[
     ("server.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/server.js")),
     ("fleet.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/fleet.js")),
     ("appliances.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/appliances.js")),
+    ("devices.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/devices.js")),
     ("command.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/command.js")),
     ("ctx.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/ctx.js")),
     ("cluster.js", "text/javascript; charset=utf-8", include_str!("../../../app/ui/cluster.js")),

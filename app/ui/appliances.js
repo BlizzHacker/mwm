@@ -10,7 +10,34 @@ async function opsLocate(){
  }
  throw Error('Select the updated fleet controller in Machines. Its appliance adapter is not available on this machine.');
 }
+const OPS_DEMO_APPS=[
+ {name:"Plex Media Server · Library A",host:"media-node-1",version:"1.43.5",available:null,status:"Healthy"},
+ {name:"Plex Media Server · Library B",host:"media-node-2",version:"1.43.5",available:null,status:"Healthy"},
+ {name:"Jellyfin",host:"media-node-2",version:"10.10.7",available:"10.11.0",status:"Healthy"},
+ {name:"Sonarr",host:"media-node-1",version:"4.0.19",available:"4.0.20",status:"Healthy"},
+ {name:"Radarr",host:"media-node-1",version:"6.4.3",available:"6.4.4",status:"Healthy"},
+ {name:"Prowlarr",host:"media-node-1",version:"2.6.4",available:"2.6.5",status:"Healthy"},
+ {name:"RomM",host:"media-node-2",version:"4.0.0",available:"4.1.0",status:"Healthy"}
+];
+let opsDemoEvents=["MWM connected to the example firewall and access point.","Proxmox cluster quorum: 3 of 3 nodes.","Media service checks passed."];
+function opsDemoDraw(){
+ $('#top-actions').innerHTML='<button class="btn" id="ops-demo-refresh">Refresh health</button><button class="btn" id="ops-demo-check">Run health check</button>';
+ $('#page').innerHTML=`<div class="card"><div class="spread"><div class="label">Interactive fleet demo</div><span class="pill low">SIMULATED · no real devices</span></div><h2>Network & media</h2><p>This sample shows how MWM links your gateway, Wi-Fi, servers, and media apps. Demo buttons change only this page in your browser.</p><div class="row"><a class="btn primary" href="/app/">Open your manager with SSO</a><button class="btn" id="ops-demo-firewall">Test firewall control</button></div></div>
+ <div class="card" style="margin-top:16px"><div class="spread"><h3>Connected topology</h3><span class="pill low">MWM control plane · connected</span></div><div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><span class="pill">Internet / WAN</span><b>→</b><span class="pill low">OPNsense firewall · 192.0.2.1</span><b>→</b><span class="pill">2.5 GbE switch · 192.0.2.3</span><b>→</b><span class="pill">3-node Proxmox cluster</span></div><div class="row" style="margin-top:10px"><span class="pill">TP-Link Wi-Fi 7 access point · 192.0.2.2 → switch</span><span class="pill">AI node</span><span class="pill">Windows devices</span></div><p class="muted" style="margin-top:12px">Management links are authenticated independently. Example IPs use a documentation-only range.</p></div>
+ <div class="grid g2" style="margin-top:16px"><div class="card"><div class="spread"><h3>OPNsense firewall</h3><span class="pill low">online · API connected</span></div><p class="mono">192.0.2.1 · WAN + LAN gateway</p><p class="muted">Suricata IDS · threat feed · daily rule updates</p><p><b>Gateway:</b> healthy &nbsp; <b>DNS:</b> 2 resolvers healthy</p><button class="btn" id="ops-demo-firewall-detail">Check firewall health</button></div><div class="card"><div class="spread"><h3>TP-Link Archer BE3600</h3><span class="pill low">online</span></div><p class="mono">192.0.2.2 · Access Point mode</p><p class="muted">Connected to the core switch; OPNsense supplies routing and DHCP.</p><button class="btn" id="ops-demo-ap">Check access point</button></div></div>
+ <div class="grid g2" style="margin-top:16px"><div class="card"><h3>Server fleet</h3><p class="muted">MWM manages the Proxmox hosts, Linux services, AI node, and Windows PCs from the same fleet view.</p><div class="row"><span class="pill low">Proxmox A · online</span><span class="pill low">Proxmox B · online</span><span class="pill low">Proxmox C · online</span><span class="pill low">AI node · online</span><span class="pill low">Windows PC · online</span></div></div><div class="card"><h3>Protection & backups</h3><p><span class="pill low">Firewall rules active</span> <span class="pill low">DNS healthy</span></p><p class="muted">IDS in alert-only mode; safe update controls check backup coverage before applying app updates.</p><button class="btn" id="ops-demo-recovery">Simulate DNS recovery</button></div></div>
+ <div class="card" style="margin-top:16px"><div class="spread"><h3>Plex · Jellyfin · ARR · RomM</h3><span class="muted">Sample app inventory</span></div><p class="muted">Try an update to see the workflow. This demo never contacts a server or downloads software.</p><div class="cc-cards">${OPS_DEMO_APPS.map((a,i)=>`<div class="card cc-app"><div class="spread"><strong>${esc(a.name)}</strong><span class="pill low">${esc(a.status)}</span></div><p class="muted">${esc(a.host)} · API health check passed</p><p class="mono">${esc(a.version)}${a.available?` → ${esc(a.available)}`:' · current'}</p>${a.available?`<button class="btn primary" data-ops-demo-update="${i}">Update in demo</button>`:'<span class="muted">Up to date</span>'}</div>`).join('')}</div></div>
+ <div class="card" style="margin-top:16px"><h3>Recent activity</h3><div id="ops-demo-events">${opsDemoEvents.map(x=>`<p class="muted">✓ ${esc(x)}</p>`).join('')}</div></div>`;
+ const event=(msg)=>{opsDemoEvents.unshift(new Date().toLocaleTimeString()+" · "+msg);opsDemoEvents=opsDemoEvents.slice(0,5);$('#ops-demo-events').innerHTML=opsDemoEvents.map(x=>`<p class="muted">✓ ${esc(x)}</p>`).join('');};
+ $('#ops-demo-refresh').onclick=()=>{event('Health dashboard refreshed (simulation).');toast('Demo health view refreshed.');};
+ $('#ops-demo-check').onclick=()=>{event('Health check passed: firewall, access point, 5 hosts, and 7 media apps.');toast('Demo health check passed.');};
+ $('#ops-demo-firewall').onclick=$('#ops-demo-firewall-detail').onclick=()=>{event('OPNsense API check passed; gateway, DNS, and IDS are healthy (simulation).');toast('Demo firewall control succeeded.');};
+ $('#ops-demo-ap').onclick=()=>{event('TP-Link access point is reachable from the switch (simulation).');toast('Demo access point check passed.');};
+ $('#ops-demo-recovery').onclick=()=>{event('DNS recovery sequence completed (simulation only).');toast('Demo recovery completed.');};
+ $$('[data-ops-demo-update]').forEach(b=>b.onclick=()=>{const a=OPS_DEMO_APPS[+b.dataset.opsDemoUpdate];if(!a?.available)return;a.version=a.available;a.available=null;event(`${a.name} updated successfully (simulation).`);toast(`${a.name} updated in the demo.`);opsDemoDraw();});
+}
 VIEWS.appliances=async function(){
+  if(DEMO){opsDemoDraw();return;}
  $('#top-actions').innerHTML='<button class="btn" id="ops-refresh">Refresh health</button><button class="btn" id="ops-scan">Scan application updates</button>';
  $('#ops-refresh').onclick=()=>VIEWS.appliances();$('#ops-scan').onclick=()=>opsJob('media_app_scan');
  $('#page').innerHTML=loading('Reading firewall, Wi-Fi access point and media application health…');
