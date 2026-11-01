@@ -5,6 +5,7 @@
 //! each module, so the UI never has to care where it is running.
 
 pub mod api;
+pub mod appliances;
 pub mod arkana;
 pub mod apps;
 pub mod cleaner;
@@ -22,6 +23,7 @@ pub mod lxc_updates;
 pub mod pve_updates;
 pub mod docker_updates;
 pub mod mcp_arr;
+pub mod mcp_proxmox;
 pub mod offload;
 pub mod plugins;
 pub mod fsutil;

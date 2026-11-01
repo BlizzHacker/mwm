@@ -285,12 +285,104 @@ fn smart() -> Value {
     json!(disks)
 }
 
+fn gpu_inventory() -> Value {
+    if let Some(out) = run("nvidia-smi", &[
+        "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu",
+        "--format=csv,noheader,nounits",
+    ]) {
+        let rows: Vec<Value> = out.lines().filter_map(|line| {
+            let f: Vec<&str> = line.split(',').map(str::trim).collect();
+            if f.len() < 5 || f[0].is_empty() { return None; }
+            let mb = |s: &str| s.parse::<u64>().ok().map(|n| n * 1024 * 1024);
+            Some(json!({
+                "name": f[0],
+                "utilization_pct": f[1].parse::<f64>().ok(),
+                "vram_used_bytes": mb(f[2]),
+                "vram_total_bytes": mb(f[3]),
+                "temp_c": f[4].parse::<f64>().ok(),
+            }))
+        }).collect();
+        if !rows.is_empty() { return json!(rows); }
+    }
+
+    #[cfg(windows)]
+    {
+        let rows = util::powershell_json(
+            "Get-CimInstance Win32_VideoController | Select-Object @{Name='name';Expression={$_.Name}},@{Name='vram_total_bytes';Expression={$_.AdapterRAM}} | ConvertTo-Json -Compress"
+        ).unwrap_or_default();
+        let values: Vec<Value> = rows.into_iter().filter_map(|r| {
+            let name = r["name"].as_str()?.trim();
+            if name.is_empty() { return None; }
+            Some(json!({
+                "name": name, "utilization_pct": null, "vram_used_bytes": null,
+                "vram_total_bytes": r["vram_total_bytes"].as_u64(), "temp_c": null,
+            }))
+        }).collect();
+        if !values.is_empty() { return json!(values); }
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let mut values = Vec::new();
+        for n in 0..16 {
+            let base = format!("/sys/class/drm/card{n}/device");
+            let Some(vendor) = read(&format!("{base}/vendor")) else { continue };
+            let Some(device) = read(&format!("{base}/device")) else { continue };
+            let total = read(&format!("{base}/mem_info_vram_total")).and_then(|s| s.trim().parse::<u64>().ok());
+            let used = read(&format!("{base}/mem_info_vram_used")).and_then(|s| s.trim().parse::<u64>().ok());
+            let brand = match vendor.trim() { "0x10de" => "NVIDIA", "0x1002" => "AMD", "0x8086" => "Intel", _ => "PCI" };
+            values.push(json!({
+                "name": format!("{brand} GPU {}", device.trim()),
+                "utilization_pct": null, "vram_used_bytes": used,
+                "vram_total_bytes": total, "temp_c": null,
+            }));
+        }
+        if !values.is_empty() { return json!(values); }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(out) = run("system_profiler", &["SPDisplaysDataType"]) {
+            let mut values = Vec::new();
+            let mut name = String::new();
+            for line in out.lines() {
+                if let Some(v) = line.trim().strip_prefix("Chipset Model:") {
+                    name = v.trim().to_string();
+                    values.push(json!({
+                        "name": name, "utilization_pct": null, "vram_used_bytes": null,
+                        "vram_total_bytes": null, "temp_c": null,
+                    }));
+                }
+            }
+            if !values.is_empty() { return json!(values); }
+        }
+    }
+    json!([])
+}
+
+#[cfg(windows)]
+fn windows_physical_drives() -> Value {
+    let rows = util::powershell_json(
+        "Get-CimInstance Win32_DiskDrive | Select-Object @{Name='device';Expression={$_.DeviceID}},@{Name='model';Expression={$_.Model}},@{Name='capacity';Expression={$_.Size}},@{Name='status';Expression={$_.Status}},@{Name='interface';Expression={$_.InterfaceType}} | ConvertTo-Json -Compress"
+    ).unwrap_or_default();
+    json!(rows)
+}
 pub fn info() -> Value {
+    let mut cpu = sysinfo::System::new();
+    cpu.refresh_cpu_all();
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    cpu.refresh_cpu_all();
+    let cpu_usage_pct = cpu.global_cpu_usage() as f64;
     let loadavg = read("/proc/loadavg").map(|s| s.split_whitespace().take(3).collect::<Vec<_>>().join(" ")).unwrap_or_default();
     let failed: Vec<String> = run("systemctl", &["--failed", "--no-legend", "--plain"])
         .map(|o| o.lines().filter_map(|l| l.split_whitespace().next().map(String::from)).collect())
         .unwrap_or_default();
     let kernel = run("uname", &["-r"]).unwrap_or_default().trim().to_string();
+    let smart_data = smart();
+    let drives = if smart_data.as_array().map(|a| !a.is_empty()).unwrap_or(false) { smart_data.clone() } else {
+        #[cfg(windows)] { windows_physical_drives() }
+        #[cfg(not(windows))] { smart_data.clone() }
+    };
     let kernels: Vec<String> = run("dpkg-query", &["-W", "-f=${Package} ${db:Status-Abbrev}\\n", "proxmox-kernel-*", "pve-kernel-*", "linux-image-[0-9]*"])
         .map(|o| o.lines().filter(|l| l.contains(" ii")).filter_map(|l| l.split_whitespace().next().map(String::from)).filter(|p| p.chars().any(|c| c.is_ascii_digit()) && !p.ends_with("-signed")).collect())
         .unwrap_or_default();
@@ -302,12 +394,15 @@ pub fn info() -> Value {
         "kernel": kernel,
         "kernels": kernels,
         "load": loadavg,
+        "cpu_usage_pct": cpu_usage_pct,
+        "gpus": gpu_inventory(),
+        "drives": drives,
         "failed": failed,
         "proxmox": proxmox(),
         "unraid": unraid(),
         "zfs": zfs(),
         "docker": docker(),
-        "smart": smart(),
+        "smart": smart_data,
     })
 }
 

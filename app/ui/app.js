@@ -151,8 +151,10 @@ const S = {
 
 const PAGES = [
   { sec: "Overview" },
+  { id: "topology", label: "Devices", icon: "net" },
   { id: "health", label: "Health Check", icon: "health" },
   { id: "command", label: "Command Center", icon: "server" },
+  { id: "appliances", label: "Network & Media", icon: "net" },
   { id: "fleet", label: "Machines", icon: "server" },
   { sec: "Clean" },
   { id: "offload", label: "Move Weight", icon: "weight" },
@@ -184,7 +186,7 @@ const PAGES = [
   { id: "tools", label: "System Tools", icon: "tools" },
   { id: "about", label: "About MWM", icon: "about" },
 ];
-let current = "health";
+let current = DEMO && location.pathname.startsWith("/demo") ? "appliances" : "topology";
 
 // Background activity per page (long jobs keep running across tab changes).
 // ACT = UI-side jobs; JOBS = engine jobs (copies, repairs) polled from Rust.
@@ -1006,5 +1008,5 @@ document.addEventListener("DOMContentLoaded", async function boot() {
     const pending = await localInvoke("pending_open_dir").catch(() => null);
     if (pending) { go("files"); setTimeout(() => loadPane(CMD.panes[0], pending, false), 350); return; }
   }
-  go(WEB ? "command" : "health");
+  go(DEMO && location.pathname.startsWith("/demo") ? "appliances" : "topology");
 });
