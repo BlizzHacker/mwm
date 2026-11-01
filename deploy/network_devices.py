@@ -34,7 +34,17 @@ def status():
  try:
   r=urllib3.PoolManager(timeout=3,retries=False).request('GET',ap['url'],redirect=False);ap['online']=r.status in (200,301,302,401,403);ap['http_status']=r.status;ap['latency_ms']=round((time.monotonic()-start)*1000)
  except Exception as e:ap.update(online=False,error='Management interface is not reachable')
- return {'available':True,'generated_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'devices':[fw,ap]}
+ modem={'id':'arris_g36','name':'ARRIS SURFboard G36','model':'ARRIS SURFboard G36','standard':'DOCSIS 3.1','url':'https://192.168.100.1/','address':'192.168.100.1','role':'Cable modem','management':'web_ui'}
+ start=time.monotonic()
+ try:
+  urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+  r=urllib3.PoolManager(cert_reqs='CERT_NONE',timeout=urllib3.Timeout(connect=3,read=4),retries=False).request('GET',modem['url']+'custom/1/landing.php',redirect=False)
+  location=r.headers.get('Location','')
+  modem.update(online=r.status in (200,301,302,401,403),http_status=r.status,latency_ms=round((time.monotonic()-start)*1000),login_required=(r.status in (401,403) or 'login' in location.lower()))
+  modem['access_state']='login_required' if modem['login_required'] else 'reachable'
+ except Exception:
+  modem.update(online=False,login_required=False,access_state='unreachable',error='Modem management page is not reachable')
+ return {'available':True,'generated_at':datetime.datetime.now(datetime.timezone.utc).isoformat(),'devices':[fw,ap,modem]}
 def action(kind,service=''):
  if kind=='check_updates':return api('/api/core/firmware/check',{})
  if kind=='restart_service':

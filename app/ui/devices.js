@@ -176,6 +176,27 @@ function dApplianceCard(d) {
   const leasesError = d.leases?.error ? "DHCP API: " + d.leases.error + "; saved clients are last-seen only" : "Live DHCP leases: " + (deviceRows(d.leases).length || 0);
   return '<article class="card device-snapshot-card device-appliance-card"><div class="device-snapshot-head"><span class="device-glyph">' + icon("shield") + '</span><div class="device-title-wrap"><strong>' + esc(d.name) + '</strong><small>' + esc(d.address || "") + ' · ' + esc(versions) + '</small></div><span class="pill ' + tone + '">' + label + '</span></div><div class="device-snapshot-address"><span class="muted">Gateway ' + esc(gw?.status_translated || gw?.status || "unknown") + ' · ' + esc(gw?.address || "no WAN address") + ' · API ' + (d.api_connected ? "connected" : "unavailable") + '</span></div><div class="device-stat-grid">' + fields + '</div><div class="device-facts">' + dFact("Services", running + " running / " + (d.services?.rowCount ?? services.length) + " reported") + dFact("IDS / Suricata", d.ids?.status || "Not reported") + networkFacts + dFact("DHCP inventory", leasesError) + dFact("Firmware", d.firmware?.product?.CORE_VERSION || versions) + '</div><div class="row device-snapshot-actions"><a class="btn small" href="' + esc(d.url || "https://192.168.0.1/") + '" target="_blank" rel="noopener noreferrer">Open firewall ↗</a></div></article>';
 }
+function dArrisCard(d) {
+  const [label, tone] = dState(d.online);
+  const login = d.login_required === true || d.access_state === "login_required";
+  const access = !d.online ? (d.error || "Modem management page is unreachable") : login ? "Management page reachable; sign in required for modem telemetry" : "Management page reachable";
+  const fields = [
+    dMetric("CPU / CORES", "Not exposed", "Embedded modem telemetry is not available"),
+    dMetric("LOAD", "Not exposed", "No modem load endpoint"),
+    dMetric("RAM", "Not exposed", "No modem memory endpoint"),
+    dMetric("GPU / VRAM", "N/A", "Cable modem"),
+    dMetric("DISK / BAYS", "Not exposed", "No modem storage inventory endpoint"),
+    dMetric("UPTIME", "Login required", "Not available without modem telemetry access")
+  ].join("");
+  const detail = [d.role || "Cable modem", d.standard || "DOCSIS version unavailable", d.latency_ms !== undefined ? d.latency_ms + " ms response" : "", d.http_status ? "HTTP " + d.http_status : ""].filter(Boolean).join(" | ");
+  return '<article class="card device-snapshot-card device-appliance-card"><div class="device-snapshot-head"><span class="device-glyph">' + icon("net") + '</span><div class="device-title-wrap"><strong>' + esc(d.name || "ARRIS SURFboard G36") + '</strong><small>' + esc(d.address || "192.168.100.1") + '</small></div><span class="pill ' + tone + '">' + label + '</span></div><div class="device-snapshot-address"><span class="muted">' + esc(detail) + '</span></div><div class="device-stat-grid">' + fields + '</div><div class="device-facts">' +
+    dFact("Model", d.model || "ARRIS SURFboard G36") +
+    dFact("Cable standard", d.standard || "DOCSIS 3.1") +
+    dFact("Signal levels / channels", login ? "Login required; not sampled" : "Unavailable from current unauthenticated check") +
+    dFact("Firmware / registration / uptime", login ? "Login required; not sampled" : "Unavailable from current unauthenticated check") +
+    dFact("Management check", access) +
+    '</div><div class="row device-snapshot-actions"><a class="btn small" href="' + esc(d.url || "https://192.168.100.1/") + '" target="_blank" rel="noopener noreferrer">Open modem</a></div></article>';
+}
 function dInventoryCard(d) {
   const [label, tone] = dState(d.state, d.detail);
   const fields = [
@@ -219,10 +240,10 @@ function drawDeviceTopology() {
   const network = deviceRows(DEVICE_VIEW.network);
   const fw = network.find((d) => d.id === "opnsense");
   const ap = network.find((d) => d.id === "tplink");
-  const modem = DEVICE_VIEW.map.find((d) => d.kind === "modem");
+  const modem = network.find((d) => d.id === "arris_g36") || DEVICE_VIEW.map.find((d) => d.kind === "modem");
   primary.push(fw ? dApplianceCard(fw) : dInventoryCard({ name: "OPNsense firewall", address: "192.168.0.1", state: "unknown", role: "Firewall / gateway", detail: "Live firewall status unavailable", icon: "shield" }));
   primary.push(ap ? dApplianceCard(ap) : dInventoryCard({ name: "TP-Link access point", address: "192.168.0.2", state: "unknown", role: "Wi-Fi access point", detail: "Live router status unavailable", icon: "net" }));
-  primary.push(dInventoryCard(modem || { name: "Internet modem", state: "unknown", role: "WAN upstream", detail: "Model and management address have not been inventoried.", icon: "net" }));
+  primary.push(modem?.id === "arris_g36" ? dArrisCard(modem) : dInventoryCard({ name: "ARRIS SURFboard G36", address: "192.168.100.1", state: "unknown", role: "DOCSIS 3.1 cable modem", detail: "Live modem check unavailable", icon: "net", href: "https://192.168.100.1/" }));
   const already = new Set([
     ...nodes.map((n) => n.ip),
     ...remotes.map((c) => deviceHost(c.connection.url)),
@@ -265,9 +286,9 @@ function drawDeviceTopology() {
     '<div class="card"><div class="label">TOTAL RAM</div><div class="big">' + esc(dBytes(ramTotal)) + '</div><div class="muted">Installed memory across live hosts</div></div>',
     '<div class="card"><div class="label">GPU / VRAM</div><div class="big">' + (gpuCount ? gpuCount + " GPUs" : "No GPU telemetry") + '</div><div class="muted">' + (totalVram ? esc(dBytes(totalVram)) + " VRAM reported" : "VRAM totals unavailable") + '</div></div>',
     '<div class="card"><div class="label">PVE GUESTS</div><div class="big">' + (guests.length ? guestUp + " / " + guests.length : "Unavailable") + '</div><div class="muted">Cluster total counted once</div></div>',
-    '<div class="card"><div class="label">NETWORK</div><div class="big">' + netLive + ' / ' + network.length + '</div><div class="muted">Firewall and access point live checks</div></div>'
+    '<div class="card"><div class="label">NETWORK</div><div class="big">' + netLive + ' / ' + network.length + '</div><div class="muted">Firewall, access point and Arris modem live checks</div></div>'
   ].join("");
-  $("#page").innerHTML = '<div class="device-hero card"><div><div class="label">REAL DEVICE SNAPSHOT · UPDATED ' + esc(now) + '</div><h2>All devices</h2><p>Hardware and live status from MWM agents, Proxmox, OPNsense and TP-Link. Each value is labeled by its source.</p></div><div class="row"><span class="pill ' + (offlineCount ? "medium" : "low") + '">' + offlineCount + ' offline / attention</span><button class="btn" data-go="cluster">Open Proxmox</button></div></div>' +
+  $("#page").innerHTML = '<div class="device-hero card"><div><div class="label">REAL DEVICE SNAPSHOT · UPDATED ' + esc(now) + '</div><h2>All devices</h2><p>Hardware and live status from MWM agents, Proxmox, OPNsense, TP-Link and ARRIS G36. Each value is labeled by its source.</p></div><div class="row"><span class="pill ' + (offlineCount ? "medium" : "low") + '">' + offlineCount + ' offline / attention</span><button class="btn" data-go="cluster">Open Proxmox</button></div></div>' +
     '<div class="grid g3 device-snapshot-summary">' + metrics + '</div>' +
     dSection("Managed hosts and network equipment", "CPU utilization, load averages, cores, RAM, VRAM, disks, physical-drive reporting, uptime, firewall counters and device reachability.", primary) +
     dSection("Other LAN devices", "Devices without an MWM agent are included from inventory. DHCP records are labeled last-seen and are not treated as live checks.", inventory.concat(liveLeases).map(dInventoryCard)) +
