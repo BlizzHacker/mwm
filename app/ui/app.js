@@ -1008,5 +1008,5 @@ document.addEventListener("DOMContentLoaded", async function boot() {
     const pending = await localInvoke("pending_open_dir").catch(() => null);
     if (pending) { go("files"); setTimeout(() => loadPane(CMD.panes[0], pending, false), 350); return; }
   }
-  go(WEB ? "command" : "health");
+  go(DEMO && location.pathname.startsWith("/demo") ? "appliances" : "topology");
 });
